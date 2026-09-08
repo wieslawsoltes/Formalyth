@@ -1,0 +1,11 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {classifyRegions,signedArea} from '../packages/regions/classify.js';
+const rect=(x,y,w,h)=>[[x,y],[x+w,y],[x+w,y+h],[x,y+h]];
+test('nested island parity and area are independent of input order',()=>{const r=classifyRegions([rect(4,4,2,2),rect(0,0,10,10),rect(2,2,6,6)]);assert.deepEqual(r.depths,[2,0,1]);assert.equal(r.regions.length,2);assert.equal(r.area,68);});
+test('orients outer boundaries CCW and holes CW',()=>{const r=classifyRegions([rect(0,0,20,10).reverse(),rect(2,2,4,4)]);assert.ok(signedArea(r.loops[0])>0);assert.ok(signedArea(r.loops[1])<0);});
+test('disjoint profiles remain separate regions',()=>{const r=classifyRegions([rect(0,0,2,2),rect(4,0,3,2)]);assert.equal(r.regions.length,2);assert.equal(r.area,10);});
+test('explicit closing point is normalized without mutating caller',()=>{const p=rect(0,0,3,2);p.push(p[0]);assert.equal(classifyRegions([p]).loops[0].length,4);assert.equal(p.length,5);});
+test('rejects self-crossings, touching boundaries, and overlapping contours',()=>{assert.throws(()=>classifyRegions([[[0,0],[3,3],[0,3],[3,0]]]),/Self/);assert.throws(()=>classifyRegions([rect(0,0,10,10),rect(0,2,4,4)]),/touch/);assert.throws(()=>classifyRegions([rect(0,0,10,10),rect(5,5,10,10)]),/cross/);});
+test('rejects invalid dimensions and resource overruns',()=>{assert.throws(()=>classifyRegions([[[0,0],[NaN,1],[2,0]]]),/finite/);assert.throws(()=>classifyRegions([rect(0,0,1,1)],{maxVertices:3}),/budget/);assert.throws(()=>classifyRegions([[[0,0],[1,0],[0,0],[0,1]]]),/Overlapping/);});
+test('translation-stable area at large coordinates',()=>{const r=classifyRegions([rect(1e9,1e9,10,10),rect(1e9+2,1e9+2,6,6)]);assert.equal(r.area,64);});
+test('nested concave profiles are classified without bounding-box shortcuts',()=>{const L=[[0,0],[8,0],[8,2],[2,2],[2,8],[0,8]];const r=classifyRegions([L,rect(4,4,1,1)]);assert.deepEqual(r.parents,[-1,-1]);assert.equal(r.area,29);});
