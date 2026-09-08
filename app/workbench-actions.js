@@ -1,0 +1,61 @@
+import {h,icon,toast,formDialog,report,download,setFormPresentation,Menu,VirtualList,FrameQueue,Preferences,labelFor,scalar,FeatureGraph,parameters,expression,cameraState,restoreCamera,installFeatureTools,$,safe,short,icons,designGroups,bodyCommands} from './workbench-shared.js';
+/** Command workflows, parameter editor, palettes and saved views. */
+export class WorkbenchActions {
+  installCommands(){
+    const add=(id,label,image,fn)=>this.c.add(id,label,image,'Workbench',fn);
+    add('view.fit','Fit model','fit',()=>{this.ctx.renderScene();this.r.fit();});
+    for(const mode of ['orthographic','perspective'])add('view.'+mode,labelFor(mode),'cube',()=>{this.r.camera.projection=mode;this.r.invalidate();this.update();});
+    for(const[name,edges,wire]of [['shaded',false,false],['edges',true,false],['wire',true,true]])add('view.'+name,name==='edges'?'Shaded with edges':name==='wire'?'Wireframe':'Shaded','layers',()=>{this.r.edges=edges;this.r.wireframe=wire;this.r.invalidate();});
+    add('view.grid','Toggle origin grid','pattern',()=>{this.prefs.update({showGrid:!this.r.showGrid});this.r.showGrid=this.prefs.data.showGrid;this.r.invalidate();});
+    for(const name of ['top','bottom','front','back','left','right','iso'])add('view.'+name,labelFor(name)+' view','cube',()=>this.r.view(name));
+    add('ui.browser','Toggle model browser','open',()=>{if(innerWidth<=700)$('.sidebar').classList.toggle('mobile-open');else document.body.classList.toggle('hide-browser');});
+    add('ui.inspector','Toggle properties panel','parameters',()=>{if(innerWidth<=1000)$('.inspector').classList.toggle('mobile-open');else document.body.classList.toggle('hide-inspector');});
+    add('ui.layout','Panel layout / density','parameters',async()=>{const p=await formDialog('Workbench layout',[{name:'density',label:'Density',type:'select',options:['compact','comfortable'],value:this.prefs.data.density},{name:'leftWidth',label:'Browser width',type:'number',min:190,max:440,value:this.prefs.data.leftWidth},{name:'rightWidth',label:'Inspector width',type:'number',min:240,max:480,value:this.prefs.data.rightWidth}]);if(p){this.prefs.update(p);this.applyPreferences();}});
+    add('ui.shortcuts','Keyboard shortcuts','help',()=>report('Keyboard shortcuts',h('div',{class:'shortcut-table'},...Object.entries({'S':'Search all commands','F':'Fit model','E':'Extrude','Ctrl / Cmd + S':'Save native project','Ctrl / Cmd + Z':'Undo','Ctrl / Cmd + Shift + Z':'Redo','F2':'Rename selected feature','Delete':'Delete selected feature','Enter':'Repeat last completed tool','Shift + click':'Add face / edge selection','Right-click':'Context actions','Arrow keys':'Navigate browser, timeline and menus','Escape':'Cancel tool or close menu'}).map(([key,value])=>h('div',{},h('kbd',{},key),h('span',{},value))))));
+    add('ui.performance','Performance counters','inspect',()=>report('Live engineering counters',{...this.metrics,note:'CPU and resource counters, not a hardware throughput qualification. DOM list sizes are bounded by visible rows.'}));
+    add('project.rename','Rename project','parameters',async()=>{const p=await formDialog('Rename project',[{name:'name',label:'Name',value:this.w.project.data.name,required:true}],{validate:v=>{if(!v.name.trim()||v.name.length>256)throw new Error('Enter 1–256 characters');return v;}});if(p)await this.w.batchEdit([{action:'rename',name:p.name}],'Rename project');});
+    const selected=()=>{const f=this.w.project.data.model.features.find(f=>f.id===this.w.selected);if(!f)throw new Error('Select a feature');return f;};
+    add('feature.rename','Rename feature','parameters',async()=>{const f=selected(),p=await formDialog('Rename feature',[{name:'name',label:'Name',value:f.name,required:true}],{validate:v=>{if(!v.name.trim()||v.name.length>256)throw new Error('Enter 1–256 characters');return v;}});if(p)await this.w.batchEdit([{action:'update',id:f.id,patch:{name:p.name}}],'Rename feature');});
+    add('feature.hide','Show / hide feature','eye',async()=>{const f=selected();await this.w.batchEdit([{action:'update',id:f.id,patch:{visible:f.visible===false?true:false}}],'Change visibility');});
+    add('feature.suppress','Suppress / unsuppress','layers',async()=>{const f=selected();await this.w.batchEdit([{action:'update',id:f.id,patch:{suppressed:!f.suppressed}}],'Toggle suppression');});
+    add('feature.isolate','Isolate / show all','cube',()=>{const f=selected();const ids=this.w.project.data.view.isolatedIds;this.w.project.updateView({isolatedIds:ids?.length?[]:[f.id]});this.ctx.renderScene();this.r.fit();});
+    for(const[action,delta]of [['earlier',-1],['later',1]])add('feature.'+action,'Move earlier / later'.split(' / ')[delta===-1?0:1]+' in history','layers',async()=>{const f=selected(),index=this.w.project.data.model.features.indexOf(f);await this.w.batchEdit([{action:'reorder',id:f.id,to:index+delta}],'Reorder feature');});
+    this.c.items.get('edit.delete').run=async()=>{
+      const f=selected(),g=new FeatureGraph(this.w.project.data.model.features),used=g.dependents(f.id),p=await formDialog('Delete '+f.name,[{name:'cascade',label:used.length?`Also delete ${used.length} dependent feature(s)`:'Delete selected feature',type:'checkbox',value:!used.length}],{description:used.length?'Dependent features: '+used.map(id=>g.byId.get(id).name).join(', '):'This operation can be undone.',confirm:'Delete'});
+      if(p?.cascade)await this.w.batchEdit([{action:'delete',id:f.id,cascade:true}],'Delete features');
+    };
+    this.c.items.get('ui.commands').run=()=>this.commandPalette();
+    this.c.items.get('design.parameterTable').run=()=>this.parameterTable();
+    add('view.named','Named views','cube',()=>this.namedViews());
+  }
+  commandPalette(){
+    const input=h('input',{class:'palette-input',role:'combobox','aria-label':'Search commands','aria-expanded':'true','aria-controls':'command-results','aria-autocomplete':'list',placeholder:'Search tools, workspaces, and actions…'}),list=h('div',{class:'palette-list',id:'command-results',role:'listbox'}),help=h('div',{class:'palette-help'},'↑ ↓ Navigate · Enter Run · Ctrl+D Pin · Esc Close');
+    const dialog=report('Commands',h('div',{},input,list,help));dialog.classList.add('command-palette');let result=[],index=0;
+    const score=c=>this.prefs.data.favorites.includes(c.id)?100:this.prefs.data.recent.includes(c.id)?40-this.prefs.data.recent.indexOf(c.id):0;
+    const render=()=>{
+      const words=input.value.toLowerCase().split(/\s+/).filter(Boolean);result=[...this.c.items.values()].filter(c=>!['file.import','feature.parameter'].includes(c.id)&&words.every(word=>`${c.label} ${c.group} ${c.id}`.toLowerCase().includes(word))).sort((a,b)=>score(b)-score(a)||a.label.localeCompare(b.label)).slice(0,100);index=Math.min(index,Math.max(0,result.length-1));
+      list.replaceChildren(...result.map((c,i)=>{const a=this.availability(c.id),row=h('div',{id:'command-result-'+i,role:'option','aria-selected':String(i===index),'aria-disabled':String(!a.enabled),class:'palette-item '+(i===index?'active':''),onclick:()=>activate(i)},icon(c.icon,19),h('div',{},h('strong',{},short(c.label)),h('small',{},a.enabled?c.group:a.reason)),h('button',{class:'favorite-button',tabindex:-1,title:'Pin command',onclick:e=>{e.stopPropagation();this.prefs.favorite(c.id);render();}},this.prefs.data.favorites.includes(c.id)?'★':'☆'));return row;}));
+      input.setAttribute('aria-activedescendant','command-result-'+index);list.querySelector('[aria-selected="true"]')?.scrollIntoView({block:'nearest'});
+      if(!result.length)list.append(h('div',{class:'empty-state'},'No matching commands'));
+    };
+    const activate=i=>{const c=result[i];if(!c)return;const a=this.availability(c.id);if(!a.enabled)return;dialog.close();this.execute(c.id);};
+    input.addEventListener('input',()=>{index=0;render();});input.addEventListener('keydown',e=>{if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();index=(index+(e.key==='ArrowDown'?1:-1)+result.length)%Math.max(1,result.length);render();}else if(e.key==='Enter'){e.preventDefault();activate(index);}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='d'){e.preventDefault();if(result[index]){this.prefs.favorite(result[index].id);render();}}});render();input.focus();
+  }
+  async parameterTable(){
+    if(document.querySelector('dialog[data-tool-panel][open]'))throw new Error('Finish the current tool first');
+    const session=this.w.beginEdit({label:'Edit parameters'}),rows=Object.entries(this.w.project.data.model.parameters).map(([name,value])=>({name,value}));
+    const dialog=h('dialog',{class:'tool-dialog parameter-dialog','data-tool-panel':'true','aria-label':'Named parameters'}),form=h('form'),list=h('div',{class:'parameter-rows'}),status=h('p',{class:'form-error',role:'alert'}),apply=h('button',{type:'submit',class:'primary'},'Apply');let timer,token=0,closed=false;
+    const values=()=>{const result={};for(const r of rows){const name=r.name.trim();if(!/^[A-Za-z_]\w*$/.test(name)||Object.hasOwn(result,name)||['__proto__','constructor','prototype'].includes(name))throw new Error('Parameter names must be unique identifiers');result[name]=scalar(r.value);}parameters(result);return result;};
+    const preview=()=>{clearTimeout(timer);const t=++token;apply.disabled=true;timer=setTimeout(async()=>{try{await session.update([{action:'parameters',values:values()}]);if(t===token&&!closed){status.textContent='Live preview · not applied';apply.disabled=false;}}catch(e){if(t===token&&!closed)status.textContent=e.message;}},160);};
+    const render=()=>{list.replaceChildren(...rows.map((r,i)=>h('div',{class:'parameter-row'},h('input',{value:r.name,placeholder:'Name','aria-label':'Parameter name',oninput:e=>{r.name=e.target.value;preview();}}),h('input',{value:r.value,placeholder:'Expression','aria-label':'Parameter expression',oninput:e=>{r.value=e.target.value;preview();}}),h('button',{type:'button','aria-label':'Delete parameter',onclick:()=>{rows.splice(i,1);render();preview();}},'−'))));};render();
+    form.append(h('div',{class:'dialog-heading'},h('h2',{},'Named parameters')),h('p',{class:'dialog-description'},'Expressions drive modeling dimensions. Changes are previewed together and saved as one undo step.'),h('div',{class:'parameter-heading'},h('span',{},'Name'),h('span',{},'Expression')),list,h('button',{type:'button',class:'add-parameter',onclick:()=>{rows.push({name:'parameter'+(rows.length+1),value:10});render();preview();}},'+ Add parameter'),status,h('div',{class:'dialog-footer'},h('button',{type:'button',onclick:()=>dialog.close()},'Cancel'),apply));
+    form.addEventListener('submit',async e=>{e.preventDefault();clearTimeout(timer);token++;apply.disabled=true;try{await session.update([{action:'parameters',values:values()}]);await session.commit();dialog.close();}catch(error){status.textContent=error.message;apply.disabled=false;}});
+    dialog.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();dialog.close();}});dialog.addEventListener('close',()=>{closed=true;token++;clearTimeout(timer);if(!session.closed)session.cancel();dialog.remove();},{once:true});dialog.append(form);document.body.append(dialog);dialog.show();dialog.querySelector('input')?.focus();
+  }
+  namedViews(){
+    const views=this.w.project.data.view.namedViews||[],node=h('div');let dialog;
+    node.append(h('button',{class:'full-button',onclick:async()=>{dialog.close();const p=await formDialog('Save named view',[{name:'name',label:'Name',value:'View '+(views.length+1)}]);if(p&&views.length>=64)throw new Error('At most 64 named views');if(p)this.w.project.updateView({namedViews:[...views,{id:crypto.randomUUID(),name:p.name,camera:cameraState(this.r.camera)}]});}},icon('save',16),'Save current view'));
+    for(const v of views)node.append(h('div',{class:'named-view-row'},h('button',{onclick:()=>{restoreCamera(this.r.camera,v.camera);this.r.invalidate();this.update();dialog.close();}},icon('cube',16),v.name),h('button',{'aria-label':'Delete view '+v.name,onclick:()=>{this.w.project.updateView({namedViews:views.filter(x=>x.id!==v.id)});dialog.close();this.namedViews();}},'×')));
+    if(!views.length)node.append(h('p',{class:'panel-help'},'Saved camera views travel with the native project.'));dialog=report('Named views',node);
+  }
+}

@@ -1,3 +1,4 @@
+import {inspectData} from './inspect.js';
 /** Small native-DOM UI toolkit: commands, accessible dialogs, safe text and SVG icons. */
 export function h(tag, attributes = {}, ...children) {
   const node = document.createElement(tag);
@@ -52,9 +53,12 @@ export function icon(name = 'cube', size = 24) {
   const path = document.createElementNS(svg.namespaceURI,'path'); path.setAttribute('d', paths[name] || paths.cube); svg.append(path); return svg;
 }
 export class Commands {
-  constructor() { this.items = new Map(); }
+  constructor() { this.items = new Map(); this.listeners=new Set(); }
+  subscribe(fn){this.listeners.add(fn);return()=>this.listeners.delete(fn);}
+  notify(event){for(const fn of this.listeners){try{fn(event);}catch(e){console.error(e);}}}
+  availability(id){const c=this.items.get(id);if(!c)return {enabled:false,reason:'Unknown command'};return c.available?.()||{enabled:true};}
   add(id, label, image, group, run) { if (this.items.has(id)) throw new Error(`Duplicate command ${id}`); this.items.set(id,{id,label,icon:image,group,run}); }
-  async execute(id, ...args) { const command = this.items.get(id); if (!command) throw new ReferenceError(`Unknown command ${id}`); return command.run(...args); }
+  async execute(id,...args){const c=this.items.get(id);if(!c)throw new ReferenceError(`Unknown command ${id}`);this.notify({type:'start',id});try{const result=await c.run(...args);this.notify({type:'complete',id});return result;}catch(error){this.notify({type:'error',id,error});throw error;}}
   search(text = '') { const q = text.toLowerCase(); return [...this.items.values()].filter(c => `${c.label} ${c.id} ${c.group}`.toLowerCase().includes(q)); }
 }
 export function toast(message, error = false) {
@@ -65,32 +69,10 @@ export function download(data, name, mime = 'application/octet-stream') {
   const blob = data instanceof Blob ? data : new Blob([data], {type:mime});
   const url = URL.createObjectURL(blob), a = h('a',{href:url,download:name}); a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
-export function formDialog(title, fields, {description = '', confirm = 'Apply', validate = value => value} = {}) {
-  return new Promise(resolve => {
-    let result = null;
-    const dialog = h('dialog'), form = h('form'), inputs = new Map(), error = h('p',{class:'form-error',role:'alert'});
-    const body = h('div',{class:'dialog-fields'});
-    for (const field of fields) {
-      const type = field.type || 'text'; let input;
-      if (type === 'select') input = h('select',{name:field.name},...(field.options || []).map(o => h('option',{value:typeof o === 'object' ? o.value : o},typeof o === 'object' ? o.label : o)));
-      else if (type === 'textarea') input = h('textarea',{name:field.name,rows:field.rows || 7});
-      else input = h('input',{name:field.name,type,step:type === 'number' ? 'any' : undefined,min:field.min,max:field.max,required:field.required});
-      if (type === 'checkbox') input.checked = !!field.value; else if (field.value !== undefined) input.value = field.value;
-      inputs.set(field.name,{input,type});
-      body.append(h('label',{class:`form-field ${type === 'checkbox' ? 'check-field' : ''}`},h('span',{},field.label || field.name),input,field.hint ? h('small',{},field.hint) : null));
-    }
-    form.append(h('div',{class:'dialog-heading'},h('h2',{},title)),description ? h('p',{class:'dialog-description'},description) : [],body,error,h('div',{class:'dialog-footer'},h('button',{type:'button',onclick:()=>dialog.close()},'Cancel'),h('button',{type:'submit',class:'primary'},confirm)));
-    form.addEventListener('submit',event=>{event.preventDefault();try {
-      const values = Object.fromEntries([...inputs].map(([name,{input,type}]) => [name,type === 'checkbox' ? input.checked : type === 'number' ? Number(input.value) : input.value]));
-      for (const [name,{type,input}] of inputs) if (type === 'number' && (input.value.trim()==='' || !Number.isFinite(values[name]))) throw new TypeError(`${name} must be a finite number`);
-      result=validate(values); dialog.close();
-    } catch(e){error.textContent=e.message;}});
-    dialog.addEventListener('close',()=>{dialog.remove();resolve(result);},{once:true});dialog.append(form);document.body.append(dialog);dialog.showModal();body.querySelector('input,select,textarea')?.focus();
-  });
-}
+export {formDialog,setFormPresentation} from './forms.js';
 export function report(title, content, actions = []) {
   const dialog=h('dialog',{class:'wide'}),body=h('div',{class:'report-content'});
-  body.append(content instanceof Node ? content : h('pre',{},typeof content === 'string' ? content : JSON.stringify(content,(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v,2)));
+  body.append(content instanceof Node ? content : typeof content==='string'?h('pre',{},content.length>150000?content.slice(0,150000)+'\n… Display truncated. Export the complete output.':content):inspectData(content,h));
   dialog.append(h('div',{class:'dialog-heading'},h('h2',{},title),h('button',{class:'icon-button','aria-label':'Close',onclick:()=>dialog.close()},icon('close'))),body,h('div',{class:'dialog-footer'},...actions.map(a=>h('button',{onclick:()=>a.run()},a.label)),h('button',{onclick:()=>dialog.close()},'Close')));
   dialog.addEventListener('close',()=>dialog.remove(),{once:true});document.body.append(dialog);dialog.showModal();return dialog;
 }

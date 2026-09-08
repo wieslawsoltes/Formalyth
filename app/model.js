@@ -1,3 +1,4 @@
+import {featureTool} from './feature-tools.js';
 import {formDialog,report,h,toast} from '../packages/ui/index.js';
 import {RegionEditor} from '../packages/ui/sketch.js';
 import {parameters} from '../packages/solver/index.js';
@@ -10,7 +11,7 @@ export async function parameterDialog(title,defaults,description='Numeric modeli
 export function installModelCommands(ctx){
  const {commands,workbench:w,renderer}=ctx,c=(...args)=>commands.add(...args);
  const body=()=>w.selectedValue({mesh:true});
- const feature=(id,label,image,type,defaults,requires=false)=>c(id,label,image,'Modeling',async supplied=>{const input=requires?body():null,p=supplied||await parameterDialog(label,defaults);if(p)return w.addFeature(type,p,input?[input.id]:[],label);});
+ const feature=(id,label,image,type,defaults,requires=false)=>c(id,label,image,'Modeling',async supplied=>{const input=requires?body():null;if(supplied)return w.addFeature(type,supplied,input?[input.id]:[],label);return featureTool(ctx,{type,params:defaults,inputs:input?[input.id]:[],name:label});});
  feature('solid.box','Box','cube','box',{width:60,depth:40,height:12,radius:0});
  feature('solid.cylinder','Cylinder','circle','cylinder',{radius:18,height:30,segments:64});
  feature('solid.cone','Cone','cube','cone',{radius:20,topRadius:8,height:35,segments:64});

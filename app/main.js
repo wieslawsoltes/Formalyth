@@ -1,3 +1,4 @@
+import {WorkbenchUI} from './workbench-ui.js';
 import {installTopologyCommands} from './topology.js';
 import {h,icon,Commands,toast,download,formDialog,report} from '../packages/ui/index.js';
 import {Project,createProject} from '../packages/project/index.js';
@@ -14,10 +15,10 @@ import {installWorkspaces} from './workspaces.js';
 const $=s=>document.querySelector(s),storage=new ProjectStorage(),commands=new Commands(),graphicsErrors=[];
 const transport=()=>new TaskRunner(()=>new Worker(new URL('./engine.worker.js',import.meta.url),{type:'module'}));
 const workbench=new Workbench({modelTasks:transport(),jobTasks:transport()}),workspaces=['Design','Surface','Mesh','Sheet Metal','Assemble','Manufacture','Additive','Simulation','Drawing','Electronics'];
-let renderer,ribbons={},modelBusy=false,jobBusy=false,jobLabel='',editor=null,measuring=false,measurePoints=[];
+let ui=null,renderer,ribbons={},modelBusy=false,jobBusy=false,jobLabel='',editor=null,measuring=false,measurePoints=[];
 const run=async(id,...args)=>{try{return await commands.execute(id,...args);}catch(e){if(e.name!=='AbortError')toast(e.message,true);}};
 const button=(label,image,fn,cls='icon-button')=>h('button',{class:cls,title:label,'aria-label':label,onclick:fn},image?icon(image,20):null,cls==='icon-button'?null:label);
-const commandButton=(id,cls='tool-button')=>{const c=commands.items.get(id);return c?button(c.label,c.icon,()=>run(id),cls):null;};
+const commandButton=(id,cls='tool-button')=>{const c=commands.items.get(id);return c?button(c.label,c.icon,()=>ui?ui.execute(id):run(id),cls):null;};
 function shell(){
   $('#app').append(h('header',{class:'titlebar'},h('div',{class:'brand'},h('span',{class:'brand-mark'},'F'),'Formalyth'),...['file.new','file.open','file.save','edit.undo','edit.redo'].map(id=>commandButton(id,'icon-button')),h('div',{class:'document-title',id:'document-title'}),h('div',{class:'spacer'}),h('span',{class:'local-badge'},'LOCAL-FIRST'),commandButton('ui.commands','icon-button'),commandButton('ui.theme','icon-button'),commandButton('ui.help','icon-button')),
   h('div',{class:'workspacebar'},h('select',{class:'workspace-select','aria-label':'Workspace',onchange:e=>setWorkspace(e.target.value)},...workspaces.map(w=>h('option',{value:w},w))),h('div',{class:'workspace-tabs'},h('button',{class:'workspace-tab active',id:'workspace-label'},'DESIGN')),h('span',{class:'workspace-hint'},'INDEPENDENT ENGINEERING · EXPERIMENTAL')),
@@ -32,35 +33,20 @@ function shell(){
   h('div',{class:'timeline'},h('div',{class:'timeline-controls'},button('History start','undo',()=>workbench.history(0)),button('History end','redo',()=>workbench.history(workbench.project.data.model.features.length))),h('div',{class:'timeline-scroll',id:'timeline'}),h('div',{class:'timeline-hint'},'PARAMETRIC HISTORY',h('br'),'Double-click to edit')),
   h('footer',{class:'statusbar'},h('span',{id:'status'},'Ready'),h('span',{class:'spacer'}),h('span',{id:'geometry',class:'status-details'}),h('span',{id:'performance',class:'status-chip status-details'}),h('span',{id:'backend',class:'status-chip'},'Graphics'),h('span',{class:'status-chip'},'mm')));
 }
-function setWorkspace(name){if(editor){toast('Finish or cancel the active sketch first');$('.workspace-select').value=workbench.project.data.view.workspace;return;}if(!workspaces.includes(name))throw new TypeError('Unknown workspace');workbench.project.updateView({workspace:name});renderer.clearLines('overlay');renderScene();renderAll();}
-function renderRibbon(){const w=workbench.project.data.view.workspace;$('.workspace-select').value=w;$('#workspace-label').textContent=w.toUpperCase();$('#ribbon').replaceChildren(...(ribbons[w]||[]).map(([name,ids])=>h('div',{class:'ribbon-group'},h('div',{class:'ribbon-tools'},ids.map(id=>commandButton(id))),h('div',{class:'ribbon-label'},name))));}
-function renderBrowser(){const q=$('.browser-search input')?.value.toLowerCase()||'',root=$('#browser');root.replaceChildren(h('div',{class:'tree-row root'},icon('open',16),workbench.project.data.name));
-  root.append(h('div',{class:'tree-row group'},icon('cube',14),'Bodies'));
-  for(const item of workbench.scene.filter(i=>i.value?.positions))if(item.name.toLowerCase().includes(q))root.append(h('div',{class:`tree-row child ${workbench.selected===item.id?'selected':''}`,onclick:()=>workbench.select(item.id),ondblclick:()=>run('feature.edit',item.id)},icon('cube',15),h('span',{class:'name'},item.name),h('span',{class:'swatch',style:`background:${/^#[0-9a-f]{6}$/i.test(item.color)?item.color:'#6497b2'}`})));
-  root.append(h('div',{class:'tree-row group'},icon('sketch',14),'Sketches / regions'));
-  for(const f of workbench.project.data.model.features)if(['sketch','region','constructionPlane','faceSketch'].includes(f.type)&&f.name.toLowerCase().includes(q))root.append(h('div',{class:`tree-row child ${workbench.selected===f.id?'selected':''}`,onclick:()=>workbench.select(f.id),ondblclick:()=>run('feature.edit',f.id)},icon('sketch',15),h('span',{class:'name'},f.name)));
-  if(workbench.errors.length)root.append(h('div',{class:'warning-note',style:'margin:12px'},`${workbench.errors.length} failed feature(s). Select red history tiles to inspect.`));
-  if(!workbench.project.data.model.features.length)root.append(h('div',{class:'empty-state'},'Create a sketch or a solid primitive to begin.'));
-}
-function renderTimeline(){const {features}=workbench.project.data.model,upto=workbench.project.data.view.timeline??features.length,root=$('#timeline');root.replaceChildren();features.forEach((f,i)=>{if(i===upto)root.append(h('span',{class:'history-marker'}));root.append(h('button',{class:`feature-tile ${workbench.selected===f.id?'selected':''} ${f.suppressed?'suppressed':''} ${i>=upto?'future':''} ${workbench.errors.some(e=>e.id===f.id)?'error':''}`,title:`${i+1}. ${f.name} · ${f.type}`,'aria-label':f.name,onclick:()=>workbench.select(f.id),ondblclick:()=>run('feature.edit',f.id),oncontextmenu:e=>{e.preventDefault();workbench.history(i+1);}},icon(['sketch','region','faceSketch'].includes(f.type)?'sketch':f.type.startsWith('extrude')?'extrude':'cube',21)));});if(upto===features.length)root.append(h('span',{class:'history-marker'}));}
-const prop=(name,value)=>h('div',{class:'property-row'},h('span',{},name),h('strong',{},String(value)));
-function renderInspector(){const root=$('#inspector'),f=workbench.project.data.model.features.find(f=>f.id===workbench.selected);root.replaceChildren();
-  if(f){root.append(h('h2',{class:'inspector-title'},f.name),h('div',{class:'inspector-subtitle'},`${f.type} · ${f.id}`));const error=workbench.errors.find(e=>e.id===f.id);if(error)root.append(h('div',{class:'warning-note'},error.message));
-    for(const[key,value]of Object.entries(f.params))if(['string','number','boolean'].includes(typeof value))root.append(h('label',{class:'property-row'},h('span',{},key),h('input',{type:typeof value==='boolean'?'checkbox':'text',value:typeof value==='boolean'?undefined:String(value),checked:value===true,'aria-label':key,onchange:e=>run('feature.parameter',f.id,key,typeof value==='boolean'?e.target.checked:e.target.value)})));
-    root.append(commandButton('feature.edit','full-button'),button(f.suppressed?'Unsuppress':'Suppress','eye',()=>workbench.editFeature(f.id,{suppressed:!f.suppressed}),'full-button'),commandButton('inspect.properties','full-button'),commandButton('edit.delete','full-button'));return;
-  }
-  const d=workbench.project.data;root.append(h('h2',{class:'inspector-title'},d.view.workspace),h('div',{class:'inspector-subtitle'},'Unified local project'),prop('Bodies',workbench.scene.filter(i=>i.value?.positions).length),prop('Features',d.model.features.length),prop('Graphics',renderer?.backend||'Initializing'),prop('Last build',`${(workbench.stats.milliseconds||0).toFixed(1)} ms`),prop('Reused features',workbench.stats.reused||0),h('div',{class:'info-card tint'},h('strong',{},'One project. Every workflow.'),h('p',{},'Modeling, operations, studies, drawings and circuits are saved together. Export a .formalyth file for a portable backup.')),
-    commandButton('design.parameters','full-button'),commandButton('workspace.records','full-button'),commandButton('file.examples','full-button'),h('div',{class:'warning-note',style:'margin-top:16px'},'Experimental faceted geometry. Engineering results and machine output require independent validation.'));
-}
-function renderScene(){
- renderer.setScene(workbench.scene);renderer.clearLines('profile');
- for(const item of workbench.scene){const v=item.value;
+function setWorkspace(name){if(editor||document.querySelector('dialog[data-tool-panel][open]')){toast('Finish or cancel the active sketch first');$('.workspace-select').value=workbench.project.data.view.workspace;return;}if(!workspaces.includes(name))throw new TypeError('Unknown workspace');workbench.project.updateView({workspace:name});renderer.clearLines('overlay');renderScene();renderAll();}
+function renderRibbon(){ui?.ribbon();}
+function renderBrowser(){ui?.queue.schedule('tree',()=>ui.renderTree());}
+function renderTimeline(){ui?.queue.schedule('history',()=>ui.renderTimeline());}
+function renderInspector(){ui?.queue.schedule('inspector',()=>ui.inspector());}
+function renderScene(items=workbench.scene){
+ const scene=ui?ui.visibleScene(items):items;renderer.setScene(scene);renderer.clearLines('profile');
+ for(const item of scene){const v=item.value;
   if(v?.kind==='profile'||v?.kind==='region')renderer.setLines(`profile-${item.id}`,profileSegments(v),workbench.selected===item.id?'#ec9d2c':'#1688c9');
   if(v?.kind==='plane'){const points=[[-25,-25,0],[25,-25,0],[25,25,0],[-25,25,0]].map(p=>m4.point(v.frame,p));renderer.setLines(`profile-${item.id}`,points.map((p,i)=>[p,points[(i+1)%4]]),'#b18b39');}
  }
  renderer.select(workbench.selected?[workbench.selected]:[]);
 }
-function renderAll(){if(!$('#browser'))return;const d=workbench.project.data;$('#document-title').textContent=d.name;$('#viewport-title').textContent=d.name;$('#viewport-subtitle').textContent=`${d.view.workspace} · orthographic · ${renderer?.backend||''}`;renderRibbon();renderBrowser();renderTimeline();renderInspector();document.body.classList.toggle('dark',d.view.theme==='dark');if(renderer){renderer.background=d.view.theme==='dark'?[.08,.12,.16,1]:[.925,.937,.944,1];renderer.invalidate();}}
+function renderAll(){ui?.update();}
 const autosave=new Autosave(snapshot=>storage.save('autosave',snapshot),{onStatus:({state,error})=>{
  const node=$('#save-status');if(!node)return;
  node.textContent=state==='saved'?'Saved locally · '+new Date().toLocaleTimeString():state==='saving'?'Saving local snapshot…':state==='error'?(error.code==='PROJECT_CONFLICT'?'Another tab changed this project · export a backup':'Local save failed · export a backup'):'Unsaved local changes';
@@ -79,7 +65,7 @@ function coreCommands(){
  c('edit.undo','Undo · Ctrl+Z','undo','Edit',()=>workbench.undo());c('edit.redo','Redo · Ctrl+Shift+Z','redo','Edit',()=>workbench.redo());c('edit.delete','Delete selected','close','Edit',async()=>{if(workbench.selected)await workbench.removeFeature(workbench.selected);});
  c('ui.theme','Toggle theme','theme','View',()=>workbench.project.updateView({theme:workbench.project.data.view.theme==='dark'?'light':'dark'}));
  c('ui.commands','Commands · S','inspect','Help',()=>{const input=h('input',{class:'palette-input',placeholder:'Search commands','aria-label':'Search commands'}),list=h('div',{class:'palette-list'});const panel=report('Command palette',h('div',{},input,list));const update=()=>list.replaceChildren(...commands.search(input.value).map(c=>h('button',{class:'palette-item',onclick:()=>{panel.close();run(c.id);}},icon(c.icon,18),c.label,h('small',{},c.group))));input.addEventListener('input',update);input.addEventListener('keydown',e=>{if(e.key==='Enter')list.querySelector('button')?.click();});update();input.focus();});
- c('ui.help','Help & scope','help','Help',()=>report('Formalyth 0.5 · Experimental',`Independent design and manufacturing workbench.\n\nDrag to orbit, Shift-drag to pan, wheel/pinch to zoom. F fits the model. S opens commands. Ctrl+S exports the entire project.\n\nSelect bodies in the browser or viewport. Double-click a history tile to edit. Right-click to roll history back. Numeric modeling fields accept named parameter expressions.\n\nManufacturing, additive jobs, assemblies, studies, drawings and RLC circuits are stored in one native project. Changed geometry invalidates derived results.\n\nBoundaries: faceted solids, not exact trimmed B-rep; no general fillet networks, arbitrary shelling or native proprietary-file compatibility. Milling is experimental three-axis/2.5D. Selected-body FEA uses approximate voxels, not a conforming mesh. Electronics supports ideal linear RLC circuits, not a PCB editor or full device simulator. Independently validate every engineering result and machine program.\n\nSee docs/README.md in the source for architecture, verification and remaining scope.`));
+ c('ui.help','Help & scope','help','Help',()=>report('Formalyth 0.6 · Experimental',`Independent design and manufacturing workbench.\n\nDrag to orbit, Shift-drag to pan, wheel/pinch to zoom. F fits the model. S opens commands. Ctrl+S exports the entire project.\n\nSelect bodies in the browser or viewport. Double-click a history tile to edit. Right-click for feature actions and history rollback. Numeric modeling fields accept named parameter expressions.\n\nManufacturing, additive jobs, assemblies, studies, drawings and RLC circuits are stored in one native project. Changed geometry invalidates derived results.\n\nBoundaries: faceted solids, not exact trimmed B-rep; no general fillet networks, arbitrary shelling or native proprietary-file compatibility. Milling is experimental three-axis/2.5D. Selected-body FEA uses approximate voxels, not a conforming mesh. Electronics supports ideal linear RLC circuits, not a PCB editor or full device simulator. Independently validate every engineering result and machine program.\n\nSee docs/README.md in the source for architecture, verification and remaining scope.`));
  c('inspect.properties','Inspect geometry','inspect','Inspect',async()=>report('Geometry inspection',await workbench.task('inspect',{body:workbench.selectedValue({mesh:true}).value})));
  c('inspect.section','Section plane','cut','Inspect',async()=>{const d=await formDialog('Z section plane',[{name:'enabled',label:'Enable section',type:'checkbox',value:renderer.clipZ===null},{name:'z',label:'Z coordinate (mm)',type:'number',value:0}]);if(d)renderer.setClip(d.enabled?d.z:null);});
  c('inspect.measure','Measure distance','measure','Inspect',()=>{measuring=true;measurePoints=[];toast('Pick two points on solid surfaces');});
@@ -88,8 +74,8 @@ function coreCommands(){
 async function boot(){
  coreCommands();shell();renderer=new Renderer($('#canvas'),{onError:message=>{const text=typeof message==='string'?message:message.message;graphicsErrors.push(text);toast(text,true);},onPick:hit=>{if(measuring&&hit){measurePoints.push(hit.point);if(measurePoints.length===2){const d=Math.hypot(...measurePoints[0].map((v,i)=>v-measurePoints[1][i]));renderer.setLines('overlay-measure',[measurePoints],'#e6a02d');toast(`Distance ${d.toFixed(4)} mm`);measuring=false;measurePoints=[];}}else workbench.select(workbench.project.data.workspaces.assembly.components.find(c=>c.id===hit?.id)?.featureId||hit?.id||null);}});
  await renderer.initialize({forceWebGL:new URLSearchParams(location.search).get('renderer')==='webgl'});$('#backend').textContent=renderer.backend;
- const ctx={commands,workbench,renderer,run,button,commandButton,setWorkspace,renderAll,renderScene,getEditor:()=>editor,setEditor:e=>editor=e};
- ribbons={...installModelCommands(ctx),...installWorkspaces(ctx)};installConstructionCommands(ctx,ribbons);installTopologyCommands(ctx,ribbons);
+ const ctx={commands,workbench,renderer,storage,autosave,run,button,commandButton,setWorkspace,renderAll,renderScene,getEditor:()=>editor,setEditor:e=>editor=e};
+ ribbons={...installModelCommands(ctx),...installWorkspaces(ctx)};installConstructionCommands(ctx,ribbons);installTopologyCommands(ctx,ribbons);ui=new WorkbenchUI(ctx,ribbons);
  workbench.subscribe(event=>{if(event.type==='scene'){renderScene();if(event.fit)renderer.fit();$('#geometry').textContent=`${workbench.scene.filter(i=>i.value?.positions).length} bodies`;$('#performance').textContent=`${workbench.stats.milliseconds.toFixed(1)} ms · ${workbench.stats.reused} reused`;renderAll();}
    if(event.type==='project'&&event.label!=='View'){renderer.clearLines('overlay');}
    if(event.type==='selection'){renderer.select(workbench.selected?[workbench.selected]:[]);renderBrowser();renderTimeline();renderInspector();}
@@ -97,8 +83,8 @@ async function boot(){
    if(event.type==='building')modelBusy=event.active;if(event.type==='task'){jobBusy=event.active;jobLabel=event.label||'';}
    if(event.type==='building'||event.type==='task'){$('#busy').classList.toggle('visible',modelBusy||jobBusy);$('#busy-title').textContent=jobBusy?`Computing ${jobLabel}`:'Rebuilding model';$('#status').textContent=modelBusy||jobBusy?'Computing in worker':'Ready';}
  });
- let saved;try{saved=await storage.load('autosave');}catch{}workbench.setProject(saved||bearingProject());await workbench.rebuild({fit:true});$('#boot').remove();
- window.formalyth={version:'0.5.0',selection:ctx.topologySelection,ready:true,graphicsErrors,commands,workbench,renderer,autosave,execute:(id,...args)=>commands.execute(id,...args),setWorkspace};
+ let saved;try{saved=await storage.load('autosave');}catch{}workbench.setProject(saved||bearingProject());await workbench.rebuild({fit:true});ui.update();ui.queue.flush();ui.tree.draw();ui.timeline.draw();$('#boot').remove();
+ window.formalyth={version:'0.6.0',ui,selection:ctx.topologySelection,ready:true,graphicsErrors,commands,workbench,renderer,autosave,execute:(id,...args)=>commands.execute(id,...args),setWorkspace};
  document.addEventListener('keydown',e=>{if(e.target.matches('input,textarea,select')||document.querySelector('dialog[open]')||editor)return;const mod=e.ctrlKey||e.metaKey,k=e.key.toLowerCase();let id=mod&&k==='s'?'file.save':mod&&k==='z'?(e.shiftKey?'edit.redo':'edit.undo'):mod&&k==='o'?'file.open':!mod&&k==='s'?'ui.commands':!mod&&k==='e'?'solid.extrude':null;if(id){e.preventDefault();run(id);}else if(k==='f'&&!mod)renderer.fit();else if(k==='escape'){measuring=false;workbench.select(null);}});
 }
 boot().catch(e=>{console.error(e);$('#boot').replaceChildren(h('div',{class:'boot-mark'},'F'),h('h1',{},'Unable to start'),h('p',{},e.message),h('p',{},'Serve over HTTPS or localhost with WebGPU or WebGL2 enabled.'));});

@@ -14,7 +14,7 @@ export class Workbench {
   setProject(project){
     if(!(project instanceof Project))throw new TypeError('Expected unified Project');
     new DesignDocument(project.data.model);this.editSession?.cancel();this.sequence++;this.modelTasks.cancelAll();this.jobTasks.cancelAll();this.unsubscribe?.();
-    this.project=project;this.assets.clear();this.available.clear();this.builtVersion=null;this.builtTimeline=null;this.scene=[];this.selected=null;this.reset=true;
+    this.project=project;this.assets.clear();this.available.clear();this.builtVersion=null;this.builtTimeline=null;this.scene=[];this.selected=null;this.recordSelection=null;this.reset=true;
     this.unsubscribe=project.subscribe(event=>this.emit({type:'project',...event}));this.emit({type:'replace'});
   }
   async rebuild({fit=false}={}){
@@ -45,7 +45,18 @@ export class Workbench {
   async undo(){if(this.project.undo())await this.rebuild();}
   async redo(){if(this.project.redo())await this.rebuild();}
   async history(upto){if(!Number.isInteger(upto)||upto<0||upto>this.project.data.model.features.length)throw new RangeError('Invalid history position');this.project.updateView({timeline:upto===this.project.data.model.features.length?null:upto});await this.rebuild();}
-  select(id){this.selected=id;this.emit({type:'selection'});}
+  select(id){this.selected=id;this.recordSelection=null;this.emit({type:'selection'});}
+  selectRecord(domain,collection,id){
+    const records=this.project.data.workspaces[domain]?.[collection];
+    if(!Array.isArray(records)||!records.some(r=>r.id===id))throw new ReferenceError('Workspace record not found');
+    this.selected=null;this.recordSelection={domain,collection,id};this.emit({type:'selection'});
+  }
+  record(domain,collection){
+    const list=this.project.data.workspaces[domain]?.[collection];
+    if(!Array.isArray(list))throw new ReferenceError('Workspace collection not found');
+    const selected=this.recordSelection,record=selected?.domain===domain&&selected.collection===collection?list.find(r=>r.id===selected.id):list.at(-1);
+    if(!record)throw new ReferenceError('Select or create a '+collection+' record');return record;
+  }
   selectedValue({mesh=false}={}){
     if(this.builtVersion!==this.project.data.geometryVersion||this.builtTimeline!==this.project.data.view.timeline)throw new Error('Geometry rebuild is not current');
     if(this.selected&&!this.available.has(this.selected))throw new Error('Selected feature is unavailable or failed to rebuild');

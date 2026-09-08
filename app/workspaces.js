@@ -8,7 +8,7 @@ const filename=s=>s.replace(/[^a-z0-9_.-]+/gi,'-');
 const millingWarning='Experimental draft toolpaths. Independently verify stock, workholding, tool/holder clearance, work offsets, spindle direction, machine dialect and every motion. Heightfield preview is not full collision verification.';
 export function installWorkspaces(ctx){
  const {commands,workbench:w,renderer,button}=ctx,c=(...args)=>commands.add(...args),domain=name=>w.project.data.workspaces[name];
- const last=(name,key)=>{const record=domain(name)[key].at(-1);if(!record)throw new Error(`Create a ${key} record first`);return record;};
+ const last=(name,key)=>w.record(name,key);
  const addMesh=(mesh,name)=>w.addFeature('mesh',{positions:Array.from(mesh.positions),indices:Array.from(mesh.indices)},[],name);
  const showPaths=path=>{const rapid=[],cut=[];for(let i=1;i<path.moves.length;i++){const a=path.moves[i-1],b=path.moves[i];(b.kind==='rapid'?rapid:cut).push([[a.x,a.y,a.z],[b.x,b.y,b.z]]);}renderer.setLines('overlay-cam-rapid',rapid,'#ca9146');renderer.setLines('overlay-cam-cut',cut,'#147bbb');};
  const showLayer=(job,index=0)=>{w.assertFresh(job);const layer=job.output.layers[index];if(!layer)throw new RangeError('No such layer');const segments=layer.paths.flatMap(path=>{const n=path.points.length;return path.points.slice(0,path.closed?n:n-1).map((p,i)=>[[p[0],p[1],layer.z],[...path.points[(i+1)%n],layer.z]]);});renderer.setLines('overlay-slice',segments,'#d59228');toast(`Layer ${index+1}/${job.output.layers.length} · Z ${layer.z.toFixed(3)} mm`);};
