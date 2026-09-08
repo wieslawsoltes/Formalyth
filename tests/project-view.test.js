@@ -1,0 +1,2 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {Project} from '../packages/project/index.js';
+test('view persistence does not pollute modeling undo history',()=>{const p=new Project();p.updateView({workspace:'Manufacture',theme:'dark'});assert.equal(p.canUndo,false);assert.equal(Project.parse(p.serialize()).data.view.workspace,'Manufacture');assert.throws(()=>p.updateView({x:NaN}),/finite/);});

@@ -1,0 +1,9 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {Workbench,bearingProject} from '../packages/workbench/index.js';
+import {Engine} from '../packages/tasks/engine.js';
+const transport=()=>{const e=new Engine();return {async run(type,payload){return e.dispatch(type,payload);},cancelAll(){},dispose(){}};};
+const make=()=>new Workbench({modelTasks:transport(),jobTasks:transport()});
+test('example, modeling edits, and project-wide undo produce valid scenes',async()=>{const w=make();w.setProject(bearingProject());await w.rebuild();assert.deepEqual(w.errors,[]);assert.equal(w.scene.length,1);const id=await w.addFeature('box',{width:10,depth:10,height:10});assert.equal(w.scene.length,2);await w.undo();assert.equal(w.scene.length,1);await w.redo();assert.equal(w.selectedValue({mesh:true}).id,id);w.dispose();});
+test('failed geometry cannot silently feed downstream manufacturing',async()=>{const w=make(),id=await w.addFeature('box',{width:10});await w.editFeature(id,{params:{width:-1}});assert.ok(w.errors.length);assert.throws(()=>w.selectedValue({mesh:true}),/unavailable|failed/);w.dispose();});
+test('derived output must not attach to a changed source or replaced project',async()=>{const w=make();await w.addFeature('box');let done;w.jobTasks.run=()=>new Promise(resolve=>done=resolve);const task=w.derived('slice',{});w.project.transact('change',d=>d.model.features[0].params.width=10);done({});await assert.rejects(task,{name:'AbortError'});w.dispose();});
+test('timeline rollback restricts available geometry without discarding feature history',async()=>{const w=make();await w.addFeature('box');const id=await w.addFeature('cylinder');await w.history(1);assert.equal(w.scene.length,1);w.select(id);assert.throws(()=>w.selectedValue(),/unavailable/);assert.equal(w.project.data.model.features.length,2);await w.history(2);assert.equal(w.scene.length,2);w.dispose();});

@@ -142,6 +142,12 @@ export class Project {
       this.#editing = false; this.#emit(label); return result;
     } finally { this.#editing = false; }
   }
+  updateView(patch) {
+    if (this.#editing || !plain(patch)) throw new TypeError('Invalid view update');
+    checkJSON(patch);
+    const next = {...this.#data, view: {...this.#data.view, ...clone(patch)}};
+    validateProject(next); this.#install(next); this.#emit('View');
+  }
   undo() {
     if (this.#editing) throw new Error('History change during transaction');
     const previous = this.#past.pop(); if (!previous) return false;
