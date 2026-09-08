@@ -18,6 +18,12 @@ export function installTopologyCommands(ctx,ribbons){
   }
   const clear=()=>{sequence++;items=[];r.clearLines('selection-detail');document.querySelector('#topology-selection')?.remove();};
   function paint(){
+    // Source sketches remain visible after projection; do not leave their former
+    // selected color behind when a body edge becomes the active selection.
+    for(const [id,line] of r.lines)if(id.startsWith('profile-')){
+      const sourceId=id.slice(8),value=w.assets.get(sourceId)?.value;
+      if(value?.kind==='region'||value?.kind==='profile')line.color=w.selected===sourceId?'#ec9d2c':'#1688c9';
+    }
     document.querySelector('#topology-selection')?.remove();r.clearLines('selection-detail');
     if(mode==='body')return;
     const panel=h('section',{id:'topology-selection',class:'info-card tint'},h('strong',{},mode==='edge'?'EDGE SELECTION':'FACE SELECTION'),h('p',{},items.length?`${items.length} selected · Shift-click adds or removes`:'Click a visible face or near its boundary. Shift-click selects more.'));
