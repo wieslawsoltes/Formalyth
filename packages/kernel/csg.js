@@ -2,8 +2,9 @@
  * Tolerance is absolute model-space distance; this is not an exact B-rep kernel.
  * Original implementation; no runtime dependency on a CSG library.
  */
-import {EPS, positive, v3} from '../math/index.js';
+import {positive, v3} from '../math/index.js';
 import {mesh, pointAt, removeDegenerate, weld} from './index.js';
+import {CollinearPointIndex} from './edge-index.js';
 function polygon(vertices, tolerance) {
   if (vertices.length < 3) return null;
   let normal;
@@ -36,7 +37,6 @@ class BSP {
     if (!polygons.length) return;
     this.budget.left -= polygons.length; if (this.budget.left < 0) throw new RangeError('Boolean complexity budget exceeded');
     if (!this.plane) {
-      // Choose a plane with a balanced split. Sampled candidates bound setup work.
       let best = polygons[0], bestScore = Infinity;
       const stride = Math.max(1, Math.floor(polygons.length/8));
       for (let k = 0; k < polygons.length; k += stride) {
@@ -95,26 +95,15 @@ function conformPolygons(polygons, tolerance, meta) {
   const unique = new Map(), points = [];
   const key = p => p.map(x => Math.round(x/tolerance)).join(',');
   for (const p of polygons) for (const v of p.vertices) if (!unique.has(key(v))) { unique.set(key(v), points.length); points.push(v); }
-  const sorted = [0, 1, 2].map(axis => points.map((_, i) => i).sort((a, b) => points[a][axis]-points[b][axis]));
-  const lowerBound = (axis, value) => { let lo = 0, hi = points.length; while (lo < hi) { const mid = (lo+hi) >>> 1; if (points[sorted[axis][mid]][axis] < value) lo = mid+1; else hi = mid; } return lo; };
+  const edgeIndex = new CollinearPointIndex(points, tolerance);
   const positions = points.flat(), indices = [];
   for (const p of polygons) {
     const ring = [];
     for (let i = 0; i < p.vertices.length; i++) {
-      const a = p.vertices[i], b = p.vertices[(i+1)%p.vertices.length], d = v3.sub(b, a), length2 = v3.dot(d, d);
-      ring.push(unique.get(key(a)));
-      if (length2 < tolerance*tolerance) continue;
-      let axis = 0; if (Math.abs(d[1]) > Math.abs(d[axis])) axis = 1; if (Math.abs(d[2]) > Math.abs(d[axis])) axis = 2;
-      const hits = [], lo = Math.min(a[axis], b[axis])-tolerance, hi = Math.max(a[axis], b[axis])+tolerance;
-      for (let j = lowerBound(axis, lo); j < points.length && points[sorted[axis][j]][axis] <= hi; j++) {
-        const id = sorted[axis][j], q = points[id], t = v3.dot(v3.sub(q, a), d)/length2;
-        if (t <= tolerance/Math.sqrt(length2) || t >= 1-tolerance/Math.sqrt(length2)) continue;
-        if (v3.distance(q, v3.add(a, v3.scale(d, t))) <= tolerance*2) hits.push({id, t});
-      }
-      hits.sort((a, b) => a.t-b.t); for (const h of hits) if (ring.at(-1) !== h.id) ring.push(h.id);
+      const start = unique.get(key(p.vertices[i])), end = unique.get(key(p.vertices[(i+1)%p.vertices.length]));
+      ring.push(start, ...edgeIndex.between(start, end));
     }
     if (ring.length === 3) { indices.push(...ring); continue; }
-    // A centroid fan retains inserted collinear boundary vertices without degenerate ears.
     const center = p.vertices.reduce((a, b) => v3.add(a, b), [0, 0, 0]).map(x => x/p.vertices.length), c = positions.length/3;
     positions.push(...center);
     for (let i = 0; i < ring.length; i++) indices.push(c, ring[i], ring[(i+1)%ring.length]);
