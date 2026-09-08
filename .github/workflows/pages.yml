@@ -27,11 +27,11 @@ jobs:
       - run: npm run verify
       - run: npm run bench
       - run: npm run build
-      - name: Check virtual display availability
+      - name: Install software graphics dependencies
         run: |
-          if ! command -v xvfb-run >/dev/null; then
+          if ! command -v xvfb-run >/dev/null || ! dpkg -s mesa-vulkan-drivers >/dev/null 2>&1; then
             sudo apt-get update -qq
-            sudo apt-get install -y xvfb
+            sudo apt-get install -y xvfb mesa-vulkan-drivers
           fi
       - name: Chromium end-to-end workflows
         env:
