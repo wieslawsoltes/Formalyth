@@ -1,3 +1,4 @@
+import {intersectsFrustum} from './projection.js';
 /** @module @formalyth/renderer — native WebGPU, WebGL2 fallback, demand-driven frames. */
 import {m4, v3, bounds} from '../math/index.js';
 import {TriangleBVH} from '../kernel/spatial.js';
@@ -43,7 +44,7 @@ function rgb(hex, alpha = 1) { if (!/^#[0-9a-f]{6}$/i.test(hex || '')) hex = '#6
 export class Renderer {
   constructor(canvas, {onFrame = () => {}, onError = console.error, onPick = () => {}} = {}) {
     this.canvas = canvas; this.camera = new OrbitCamera(); this.onFrame = onFrame; this.onError = onError; this.onPick = onPick;
-    this.items = new Map(); this.lines = new Map(); this.selected = new Set(); this.clipZ = null; this.edges = true; this.wireframe = false;
+    this.metrics={geometryUploadedBytes:0,resourcesCreated:0,resourcesReleased:0};this.submittedBytes=0;this.frameNumber=0;this.culling=true;this.showGrid=true;this.items = new Map(); this.lines = new Map(); this.selected = new Set(); this.clipZ = null; this.edges = true; this.wireframe = false;
     this.background = [.925, .937, .944, 1]; this.backend = 'initializing'; this.pending = false; this.ready = false; this.disposed = false; this.interaction = 'orbit';
     this.abort = new AbortController(); this.observe = new ResizeObserver(() => this.resize()); this.observe.observe(canvas);
   }
@@ -94,7 +95,8 @@ export class Renderer {
   }
   resource(vertices, line) {
     if (!vertices.length) return null;
-    const out = {count: vertices.length/6, bytes: vertices.byteLength, line};
+    this.metrics.geometryUploadedBytes+=vertices.byteLength;this.metrics.resourcesCreated++;
+    const out = {count: vertices.length/6, bytes: vertices.byteLength, line, data:new Float32Array(36)};
     if (this.device) {
       out.buffer = this.device.createBuffer({size: vertices.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST}); this.device.queue.writeBuffer(out.buffer, 0, vertices);
       out.uniform = this.device.createBuffer({size: 144, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST});
@@ -105,7 +107,7 @@ export class Renderer {
     }
     return out;
   }
-  release(entry) { if (!entry) return; for (const r of [entry.surface, entry.edge]) if (r) { if (this.device) { r.buffer.destroy(); r.uniform.destroy(); } else { this.gl.deleteBuffer(r.buffer); this.gl.deleteVertexArray(r.vao); } } }
+  release(entry) { if (!entry) return; for (const r of [entry.surface, entry.edge]) if (r) { this.metrics.resourcesReleased++; if (this.device) { r.buffer.destroy(); r.uniform.destroy(); } else { this.gl.deleteBuffer(r.buffer); this.gl.deleteVertexArray(r.vao); } } }
   setScene(items) {
     if (!this.ready) throw new Error('Initialize renderer before setting scene');
     const keep = new Set();
@@ -119,7 +121,7 @@ export class Renderer {
     for (const [id, entry] of this.items) if (!keep.has(id)) { this.release(entry); this.items.delete(id); }
     this.invalidate();
   }
-  setLines(id, segments, color = '#3c98c9') {
+  setLines(id, segments, color = '#e48d38') {
     const old = this.lines.get(id); this.release(old); this.lines.delete(id);
     if (segments.length) { const p = prepareLines(segments); this.lines.set(id, {id, origin: p.origin, model: m4.identity(), color, surface: this.resource(p.vertices, true)}); }
     this.invalidate();
@@ -153,35 +155,42 @@ export class Renderer {
     return result;
   }
   invalidate() { if (this.pending || !this.ready || this.disposed) return; this.pending = true; requestAnimationFrame(() => { this.pending = false; if (this.ready && !this.disposed) this.draw(); }); }
-  uniformData(entry, resource, edge = false) {
-    const model = m4.multiply(entry.model, m4.translation(...entry.origin)), inverse = m4.inverse(model), out = new Float32Array(36);
-    out.set(m4.multiply(this.camera.matrix(!!this.device), model));
+  uniformData(entry, resource, edge = false, frame = null) {
+    if(!frame||entry.frameNumber!==frame.number){
+      const model=m4.multiply(entry.model,m4.translation(...entry.origin));entry.uniformModel=model;entry.uniformInverse=m4.inverse(model);entry.frameNumber=frame?.number;
+    }
+    const model=entry.uniformModel,inverse=entry.uniformInverse,out=resource.data||(resource.data=new Float32Array(36));out.fill(0);
+    out.set(m4.multiply(frame?.matrix||this.camera.matrix(!!this.device), model));
     let color = rgb(edge ? (this.selected.has(entry.id) ? '#167bcb' : '#324b59') : entry.color || '#6497b2');
     if (!edge && this.selected.has(entry.id)) color = [color[0]*.65+.1, color[1]*.65+.24, color[2]*.65+.34, 1];
     out.set(color, 16);
     if (this.clipZ !== null) { const plane = [0, 0, 1, -this.clipZ]; out.set([0, 1, 2, 3].map(col => plane.reduce((s, v, row) => s+v*model[col*4+row], 0)), 20); }
-    out.set([...m4.point(inverse, this.camera.eye), 0], 24); out.set([...m4.vector(inverse, [-.4, -.55, 1]), 0], 28);
+    out.set([...m4.point(inverse, frame?.eye||this.camera.eye), 0], 24); out.set([...m4.vector(inverse, [-.4, -.55, 1]), 0], 28);
     out.set([resource.line ? 1 : 0, this.clipZ !== null && !entry.id.startsWith('grid') && !entry.id.startsWith('axis') ? 1 : 0, .35, 0], 32); return out;
   }
   draw() {
     if (!this.ready || this.disposed) return;
     const started = performance.now(); let drawCalls = 0, bytes = 0, triangles = 0;
-    const draws = collectDraws(this.items, this.lines, this);
+    const frame={number:++this.frameNumber,matrix:this.camera.matrix(!!this.device),eye:this.camera.eye};
+    const visible=new Map();for(const[id,entry]of this.items)if(!this.culling||intersectsFrustum(entry.bounds,m4.multiply(frame.matrix,entry.model),!!this.device))visible.set(id,entry);
+    const lines=this.showGrid?this.lines:new Map([...this.lines].filter(([id])=>!id.startsWith('grid')&&!id.startsWith('axis')));
+    const draws = collectDraws(visible, lines, this);
     for (const entry of this.items.values()) triangles += entry.triangles;
     if (this.device) {
       const encoder = this.device.createCommandEncoder(), pass = encoder.beginRenderPass({colorAttachments: [{view: this.multisample.createView(), resolveTarget: this.context.getCurrentTexture().createView(), clearValue: this.background, loadOp: 'clear', storeOp: 'store'}], depthStencilAttachment: {view: this.depth.createView(), depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'discard'}});
-      for (const [entry, resource, edge] of draws) { const data = this.uniformData(entry, resource, edge); this.device.queue.writeBuffer(resource.uniform, 0, data); pass.setPipeline(resource.line ? this.linePipeline : this.pipeline); pass.setBindGroup(0, resource.bind); pass.setVertexBuffer(0, resource.buffer); pass.draw(resource.count); drawCalls++; bytes += resource.bytes; }
+      for (const [entry, resource, edge] of draws) { const data = this.uniformData(entry, resource, edge, frame); this.device.queue.writeBuffer(resource.uniform, 0, data); pass.setPipeline(resource.line ? this.linePipeline : this.pipeline); pass.setBindGroup(0, resource.bind); pass.setVertexBuffer(0, resource.buffer); pass.draw(resource.count); drawCalls++; bytes += resource.bytes; }
       pass.end(); this.device.queue.submit([encoder.finish()]);
     } else {
       const gl = this.gl, u = this.uniforms; gl.viewport(0, 0, this.canvas.width, this.canvas.height); gl.clearColor(...this.background); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.disable(gl.CULL_FACE); gl.useProgram(this.program);
       for (const [entry, resource, edge] of draws) {
-        const data = this.uniformData(entry, resource, edge); gl.uniformMatrix4fv(u.uMVP, false, data.subarray(0, 16)); gl.uniform4fv(u.uColor, data.subarray(16, 20)); gl.uniform4fv(u.uClip, data.subarray(20, 24)); gl.uniform3fv(u.uEye, data.subarray(24, 27)); gl.uniform3fv(u.uLight, data.subarray(28, 31)); gl.uniform3fv(u.uFlags, data.subarray(32, 35));
+        const data = this.uniformData(entry, resource, edge, frame); gl.uniformMatrix4fv(u.uMVP, false, data.subarray(0, 16)); gl.uniform4fv(u.uColor, data.subarray(16, 20)); gl.uniform4fv(u.uClip, data.subarray(20, 24)); gl.uniform3fv(u.uEye, data.subarray(24, 27)); gl.uniform3fv(u.uLight, data.subarray(28, 31)); gl.uniform3fv(u.uFlags, data.subarray(32, 35));
         if (resource.line) { gl.disable(gl.POLYGON_OFFSET_FILL); gl.depthMask(false); } else { gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(1, 1); gl.depthMask(true); }
         gl.bindVertexArray(resource.vao); gl.drawArrays(resource.line ? gl.LINES : gl.TRIANGLES, 0, resource.count); drawCalls++; bytes += resource.bytes;
       }
       gl.depthMask(true);
     }
-    this.onFrame({backend: this.backend, triangles, drawCalls, residentDrawBytes: bytes, cpuMilliseconds: performance.now()-started, gridStep: this.gridStep});
+    const uploadedBytes=this.metrics.geometryUploadedBytes-this.submittedBytes;this.submittedBytes=this.metrics.geometryUploadedBytes;
+    this.frameStats={backend:this.backend,triangles,drawCalls,culledBodies:this.items.size-visible.size,residentDrawBytes:bytes,geometryUploadedBytes:uploadedBytes,uniformBytes:drawCalls*144,cpuMilliseconds:performance.now()-started,gridStep:this.gridStep};this.onFrame(this.frameStats);
   }
   attachControls() {
     const signal = this.abort.signal, pointers = new Map(); let gesture = null, down = null, moved = false;
