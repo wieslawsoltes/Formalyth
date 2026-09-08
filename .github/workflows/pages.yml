@@ -27,11 +27,15 @@ jobs:
       - run: npm run verify
       - run: npm run bench
       - run: npm run build
+      - name: Install software Vulkan test driver
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y mesa-vulkan-drivers vulkan-tools xvfb
       - name: Chromium end-to-end workflows
         env:
           SITE_ROOT: _site
           CHROME_BIN: ./scripts/chrome-ci.sh
-        run: npm run test:browser
+        run: xvfb-run -a npm run test:browser
       - name: Package exact committed source
         if: always()
         run: git archive --format=zip HEAD -o /tmp/Formalyth-source.zip
