@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Use Mesa's software Vulkan driver for both ANGLE and Dawn. The bundled
-# SwiftShader ICD has no XCB surface support in this runner's Chrome build.
+# Disposable CI browser: ANGLE and Dawn share Mesa's software Vulkan ICD.
 set -euo pipefail
 icd="$(find /usr/share/vulkan/icd.d -maxdepth 1 -name 'lvp_icd*.json' -print -quit)"
 if [[ -z "$icd" ]]; then echo 'Mesa lavapipe ICD is required for graphics CI' >&2; exit 1; fi
@@ -14,4 +13,5 @@ for arg in "$@"; do
     *) args+=("$arg") ;;
   esac
 done
-exec /usr/bin/google-chrome "${args[@]}" --ozone-platform=x11 --use-vulkan=native --enable-features=Vulkan,VulkanFromANGLE --enable-gpu
+printf 'Graphics CI: %s\n' "$icd" >&2
+exec /usr/bin/google-chrome "${args[@]}" --headless=new --no-first-run --no-default-browser-check --disable-search-engine-choice-screen --ozone-platform=x11 --use-vulkan=native --enable-features=Vulkan --disable-vulkan-surface --enable-gpu

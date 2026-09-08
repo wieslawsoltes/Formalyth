@@ -5,7 +5,7 @@ Internal modeling units are millimeters, using a right-handed Z-up coordinate sy
 | Format | Implemented scope | Important exclusions |
 | --- | --- | --- |
 | `.formalyth` / native JSON | Version-2 unified project; model, domains, view, extensions; migration from version-1 modeling document | Unknown versions reject; foreign native project formats are not supported |
-| STL | ASCII and binary triangles, including binary files whose header begins with `solid`; explicit unit conversion in library options | No units encoded by STL itself, feature history, assemblies or reliable colors |
+| STL | ASCII and binary triangles, including binary files whose header begins with `solid`; explicit scale conversion in library options | No units encoded by STL itself, feature history, assemblies or reliable colors |
 | OBJ | Polygon mesh faces, triangulation of concave faces, negative indices, groups and names | Not a complete material/texture/animation workflow |
 | PLY | ASCII and binary little/big-endian polygon meshes within the supported property schema | Arbitrary user-defined semantic attributes are not a full round-trip contract |
 | glTF / GLB 2.0 | Embedded static triangle scenes, transforms, bounded buffers/accessors; internal mm/Z-up converted to format m/Y-up | External buffers/resources, required unsupported extensions, skins and animation are not supported |
@@ -18,10 +18,12 @@ Library API:
 
 ```js
 import {importGeometry, exportGeometry} from './packages/exchange/index.js';
-const imported = importGeometry(binaryOrText, 'stl', {units: 'mm'});
+// scale is a numeric multiplier to convert the input coordinates to millimeters.
+// Use 1 for millimeters and 25.4 for an STL authored in inches.
+const imported = importGeometry(binaryOrText, 'stl', {scale: 1});
 const output = exportGeometry(imported.bodies, 'glb');
 ```
 
-Consult the individual parser and its tests for exact option names and budgets. The `formats` registry describes available readers/writers, not universal compatibility. For example, accepting a faceted STEP fixture must not be described as accepting all STEP files.
+Consult each parser and its tests for exact option names and budgets. The `formats` registry describes available readers/writers, not universal compatibility. Accepting a faceted STEP fixture must not be described as accepting all STEP files.
 
 Round-trip tests check supported geometry, dimensions, orientation, transformed units, malformed inputs and explicit unsupported cases. Independent test corpora from multiple writers remain an open validation requirement.
