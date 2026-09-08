@@ -1,5 +1,5 @@
 node_modules/
-.DS_Store
-coverage/
-test-results/
+_site/
+reports/
 *.log
+.DS_Store

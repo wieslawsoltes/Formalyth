@@ -2,6 +2,7 @@
 
 Formalyth is an independent experimental design and manufacturing workbench. The source uses plain JavaScript, HTML, CSS and original SVG assets with no runtime third-party package dependencies.
 
+- [0.3 construction, constraints and persistence](CONTINUATION-0.3.md)
 - [Architecture and data ownership](ARCHITECTURE.md)
 - [Implemented features and explicit limitations](FEATURES.md)
 - [Reusable library and command API examples](API.md)

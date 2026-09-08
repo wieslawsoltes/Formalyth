@@ -2,7 +2,7 @@
 
 An independent, MIT-licensed design and manufacturing workbench for the browser. Original plain JavaScript, HTML, CSS and SVG assets; native WebGPU rendering with a WebGL2 fallback. No runtime framework, remote service, CDN or package installation is required.
 
-**Version 0.2 is experimental. It is not a complete or fully compatible professional engineering suite.** See [implemented features and limitations](docs/FEATURES.md) and [engineering safety](docs/SAFETY.md).
+**Version 0.3 is experimental. It is not a complete or fully compatible professional engineering suite.** See [implemented features and limitations](docs/FEATURES.md) and [engineering safety](docs/SAFETY.md).
 
 ## Run
 
@@ -24,6 +24,10 @@ npm run test:browser
 ```
 
 On Linux CI the browser test runs under Xvfb and uses software Vulkan to exercise both WebGL2 and native WebGPU. This is API/render-path verification, not hardware-GPU performance qualification. The deploy job runs only after the numerical, source, build and browser gates succeed. Actions retains the exact committed source, machine-readable reports and screenshots.
+
+## New in 0.3
+
+Construction planes, signed/symmetric/two-sided profile extrusions with join/cut/intersect, a worker-backed graphical polygon constraint editor, named driving dimensions, conflict-detecting IndexedDB saves, and revision-safe coalesced autosave. See [0.3 implementation notes](docs/CONTINUATION-0.3.md).
 
 ## Workflows
 
