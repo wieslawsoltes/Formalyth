@@ -74,6 +74,7 @@ export function report(title, content, actions = []) {
   const dialog=h('dialog',{class:'wide'}),body=h('div',{class:'report-content'});
   body.append(content instanceof Node ? content : typeof content==='string'?h('pre',{},content.length>150000?content.slice(0,150000)+'\n… Display truncated. Export the complete output.':content):inspectData(content,h));
   dialog.append(h('div',{class:'dialog-heading'},h('h2',{},title),h('button',{class:'icon-button','aria-label':'Close',onclick:()=>dialog.close()},icon('close'))),body,h('div',{class:'dialog-footer'},...actions.map(a=>h('button',{onclick:()=>a.run()},a.label)),h('button',{onclick:()=>dialog.close()},'Close')));
+  dialog.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();dialog.close();}});
   dialog.addEventListener('close',()=>dialog.remove(),{once:true});document.body.append(dialog);dialog.showModal();return dialog;
 }
 export function jsonValue(value) { return JSON.parse(JSON.stringify(value,(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v)); }

@@ -11,7 +11,7 @@ export class WorkbenchUI extends WorkbenchPanels {
     this.tree.onDraw=()=>{const row=this.treeRows[this.treeFocus];if(row&&this.tree.nodes.has(row.key))$('#browser').setAttribute('aria-activedescendant','tree-node-'+this.treeFocus);else $('#browser').removeAttribute('aria-activedescendant');};
     this.timeline=new VirtualList($('#timeline'),{role:'listbox',horizontal:true,size:40,render:(f,i)=>this.historyTile(f,i)});
     this.events();this.applyPreferences();
-    this.c.subscribe(e=>{if(e.type==='complete'&&!/^(ui\.|selection\.|feature\.parameter)/.test(e.id)){this.prefs.record(e.id);this.lastRepeat=e.id;}if(e.type==='error')this.lastError=e.error.message;this.updateAvailability();});
+    this.c.subscribe(e=>{if(e.type==='complete'&&!/^(ui\.|selection\.|feature\.parameter)/.test(e.id)){this.prefs.record(e.id);if(/^(solid\.|mesh\.|sketch\.|construct\.|cam\.(contour|pocket|face|drill|parallel)$)/.test(e.id))this.lastRepeat=e.id;}if(e.type==='error')this.lastError=e.error.message;this.updateAvailability();});
     this.w.subscribe(e=>{
       if(e.type==='preview'){this.updateAvailability();this.previewScene=e.scene;this.ctx.renderScene(e.scene);$('#status').textContent='Live preview · Apply to save';}
       if(e.type==='previewError'){this.previewScene=null;this.ctx.renderScene();}

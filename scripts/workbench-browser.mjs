@@ -7,6 +7,7 @@ export async function workbenchBrowserChecks({evaluate,send,check,until,clickEle
   const previewReady=()=>until(()=>evaluate(`formalyth.workbench.editSession?.valid&&!formalyth.workbench.editSession?.closed`),'valid speculative preview');
   const panelClosed=()=>until(()=>evaluate(`!document.querySelector('dialog[data-tool-panel][open]')`),'closed tool panel');
   await evaluate(`window.uiReturnProject=formalyth.workbench.project.serialize();formalyth.setWorkspace('Design');formalyth.workbench.select(null);`);await tick();
+  await check('retained inspector body counts reflect the completed worker build',`const w=formalyth.workbench;return Number(document.querySelector('#inspector .project-summary strong')?.textContent)===w.scene.filter(i=>i.value?.positions).length;`);
   await check('compact ribbon exposes all tools without desktop horizontal overflow',`const r=document.querySelector('#ribbon');return r.scrollWidth<=r.clientWidth+1&&document.querySelectorAll('.ribbon-menu-label').length>=6;`);
   await clickElement('.ribbon-menu-label[aria-label="Modify tools"]');
   await check('tool menu exposes secondary editing actions with keyboard focus',`return document.querySelector('.command-menu [data-command="solid.round"]')?.getAttribute('role')==='menuitem'&&document.activeElement.getAttribute('role')==='menuitem';`);
@@ -45,6 +46,7 @@ export async function workbenchBrowserChecks({evaluate,send,check,until,clickEle
   await check('panel resizing persists a bounded native layout preference',`const p=formalyth.ui.prefs.data;return p.leftWidth>=270&&p.leftWidth<=440&&JSON.parse(localStorage.getItem('formalyth-ui-v1')).leftWidth===p.leftWidth;`);
   await evaluate(`formalyth.execute('ui.commands')`);await input('dialog[open] input[aria-label="Search commands"]','Draft');await key('d','KeyD',2);
   await check('command palette supports searched, pinned tools',`return formalyth.ui.prefs.data.favorites.includes('solid.draft')&&document.querySelector('#command-results [aria-selected="true"] strong').textContent.includes('Draft');`);await key('Escape');
+  await check('Escape dismisses the command palette without leaving a modal backdrop',`return !document.querySelector('.command-palette[open]')&&!document.querySelector('dialog:modal');`);
   await check('camera-only drawing reuses geometry buffers and records actual upload deltas',`const r=formalyth.renderer;r.draw();const before=r.metrics.geometryUploadedBytes;r.camera.orbit(2,1);r.draw();return r.metrics.geometryUploadedBytes===before&&r.frameStats.geometryUploadedBytes===0;`);
   await capture('workbench-ui-acceptance.png');
   await evaluate(`(async()=>{const w=formalyth.workbench;const {newFeature}=await import('./packages/workbench/edit-session.js');w.mutateModel('Large browser fixture',d=>d.transact('Fixture',m=>{m.features=Array.from({length:2000},(_,i)=>({...newFeature('box',{width:1,depth:1,height:1},[],'Part '+i),visible:false}));}));await w.rebuild();formalyth.ui.collapsed.delete('features');formalyth.ui.update();formalyth.ui.queue.flush();})()`);await tick();

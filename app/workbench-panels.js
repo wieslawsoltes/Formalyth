@@ -47,7 +47,13 @@ export class WorkbenchPanels extends WorkbenchActions {
     this.menu([...(f?['feature.edit','feature.rename','feature.hide','feature.isolate','feature.suppress','edit.delete']:['sketch.create','solid.box','solid.cylinder']),...extras,{separator:true},'edit.undo','edit.redo','view.fit','ui.commands'],null,'Context commands',x,y);
   }
   inspector(){
-    const root=$('#inspector'),f=this.w.project.data.model.features.find(f=>f.id===this.w.selected),key=f?`${f.id}:${this.w.project.data.geometryVersion}:${f.name}:${f.color}:${f.visible}:${f.suppressed}`:`${this.w.project.data.geometryVersion}:${this.w.project.data.view.workspace}:${this.record?.key||''}`;
+    const root=$('#inspector'),f=this.w.project.data.model.features.find(f=>f.id===this.w.selected);
+    // Source changes arrive before the worker result. Include built state so a
+    // retained inspector cannot keep the previous body's count/error status.
+    const builtKey=`${this.w.builtVersion}:${this.w.builtTimeline}:${this.w.scene.length}:${this.w.errors.map(e=>e.id+':'+e.message).join('|')}`;
+    const record=this.record?this.currentRecord(this.record):null;
+    if(record!==this.inspectedRecord){this.inspectorKey=null;this.inspectedRecord=record;}
+    const key=(f?`${f.id}:${this.w.project.data.geometryVersion}:${f.name}:${f.color}:${f.visible}:${f.suppressed}`:`${this.w.project.data.geometryVersion}:${this.w.project.data.view.workspace}:${this.record?.key||''}`)+':'+builtKey;
     if(this.inspectorKey===key)return;
     this.inspectorCleanup?.();this.ownedInspector?.cancel();this.ownedInspector=null;this.inspectorKey=key;
     const selection=$('#topology-selection');if(selection)selection.remove();root.replaceChildren();if(selection)root.append(selection);
@@ -83,14 +89,15 @@ export class WorkbenchPanels extends WorkbenchActions {
   actionButton(id){const c=this.c.items.get(id);return c?h('button',{class:'full-button','data-command':id,onclick:()=>this.execute(id)},icon(c.icon,16),short(c.label)):null;}
   recordInspector(root,row){
     root.append(h('h2',{class:'inspector-title'},row.label),h('div',{class:'inspector-subtitle'},`${labelFor(row.domain)} / ${labelFor(row.collection)}`));
-    if(row.stale)root.append(h('div',{class:'warning-note'},'Source geometry changed. Regenerate before using this output.'));
-    const r=this.w.project.data.workspaces[row.domain][row.collection].find(r=>r.id===row.record.id)||row.record;for(const[name,value]of Object.entries(r.config||r.settings||{}))if(['string','number','boolean'].includes(typeof value))root.append(h('div',{class:'property-row'},h('span',{},labelFor(name)),h('strong',{},safe(value))));
+    const current=this.currentRecord(row);if(current?.sourceVersion&&this.w.project.isStale(current))root.append(h('div',{class:'warning-note'},'Source geometry changed. Regenerate before using this output.'));
+    const r=this.currentRecord(row);if(!r){root.append(h('p',{class:'warning-note'},'This record no longer exists. Select another record.'));return;}for(const[name,value]of Object.entries(r.config||r.settings||{}))if(['string','number','boolean'].includes(typeof value))root.append(h('div',{class:'property-row'},h('span',{},labelFor(name)),h('strong',{},safe(value))));
     root.append(h('button',{class:'full-button',onclick:()=>this.showRecord(row)},icon('eye',16),'Show saved result'),h('button',{class:'full-button',onclick:()=>report(row.label,r)},icon('inspect',16),'Inspect record'),h('button',{class:'full-button',onclick:()=>download(JSON.stringify(r,null,2),row.domain+'-record.json','application/json')},icon('export',16),'Export record JSON'));
     if(row.domain==='manufacturing')root.append(this.actionButton('cam.regenerate'),this.actionButton('cam.post'));
     root.append(h('p',{class:'panel-help'},'Selected workspace actions use this record. Selecting a model feature returns commands to their latest-record default.'));
   }
+  currentRecord(row){return this.w.project.data.workspaces[row.domain]?.[row.collection]?.find(record=>record.id===row.record.id)||null;}
   showRecord(row){
-    const r=row.record;if(r.sourceVersion)this.w.assertFresh(r);
+    const r=this.currentRecord(row);if(!r)throw new ReferenceError('The selected record no longer exists');if(r.sourceVersion)this.w.assertFresh(r);
     if(r.output?.svg){const url=URL.createObjectURL(new Blob([r.output.svg],{type:'image/svg+xml'}));const d=report(row.label,h('img',{src:url,alt:row.label,style:'width:100%;background:white'}));d.addEventListener('close',()=>URL.revokeObjectURL(url),{once:true});}
     else if(r.output?.moves){const segments=r.output.moves.slice(1).map((m,i)=>[[r.output.moves[i].x,r.output.moves[i].y,r.output.moves[i].z],[m.x,m.y,m.z]]);this.r.setLines('overlay-record',segments,'#1688c9');}
     else if(r.output?.body?.positions){this.r.setScene([{id:r.id,value:r.output.body,color:'#ce9653'}]);this.r.fit();}
