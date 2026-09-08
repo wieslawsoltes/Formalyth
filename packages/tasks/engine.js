@@ -1,3 +1,7 @@
+import {installTopologyFeatures} from '../topology/features.js';
+import {buildTopology} from '../topology/index.js';
+import {chamferEdges,splitConvex} from '../topology/operations.js';
+import {faceProfile} from '../topology/projection.js';
 /** DOM-free task dispatch for the browser worker and Node integration tests. */
 import {m4} from '../math/index.js';
 import {profileFrame} from '../construction/frames.js';
@@ -16,7 +20,7 @@ import {evaluateAssembly, billOfMaterials, interference} from '../assembly/index
 import {solveCircuit, transient, acSweep} from '../electronics/index.js';
 import {importGeometry, exportGeometry} from '../exchange/index.js';
 
-installRegionFeatures();installConstructionFeatures();
+installRegionFeatures();installConstructionFeatures();installTopologyFeatures();
 export class Engine {
   constructor() { this.evaluator = new FeatureEvaluator(); this.sent = new Map(); this.epoch = crypto.randomUUID(); }
   evaluate({document, upto = document.features.length, reset = false}) {
@@ -38,6 +42,10 @@ export class Engine {
   }
   dispatch(type, payload) {
     switch (type) {
+      case 'topology': return buildTopology(payload.body,payload.options);
+      case 'chamfer': return chamferEdges(payload.body,payload.edges,payload.distance,payload.options);
+      case 'splitConvex': return splitConvex(payload.body,payload.options);
+      case 'faceProfile': return faceProfile(payload.body,payload.face,payload.options);
       case 'solveSketch': return evaluateSketch(payload.sketch,payload.parameters||{},payload.options);
       case 'evaluate': return this.evaluate(payload);
       case 'inspect': return {bounds: meshBounds(payload.body), properties: massProperties(payload.body), topology: topology(payload.body)};

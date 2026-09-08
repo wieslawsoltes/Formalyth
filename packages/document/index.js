@@ -71,7 +71,8 @@ const requireBody = value => { if (!value?.positions || !value?.indices) throw n
 const requireProfile = value => { if (value?.kind !== 'profile') throw new TypeError('Feature requires a sketch profile'); return value; };
 const radians = degrees => degrees*Math.PI/180;
 export const featureRegistry = new Map();
-export function registerFeature(type, evaluate) { if (featureRegistry.has(type)) throw new Error(`Feature already registered: ${type}`); if (typeof evaluate !== 'function') throw new TypeError('Feature evaluator must be a function'); featureRegistry.set(type, evaluate); }
+export const featurePolicies = new Map();
+export function registerFeature(type, evaluate, {consumeInputs = true} = {}) { if (featureRegistry.has(type)) throw new Error(`Feature already registered: ${type}`); if (typeof evaluate !== 'function') throw new TypeError('Feature evaluator must be a function'); featureRegistry.set(type, evaluate); featurePolicies.set(type, Object.freeze({consumeInputs: consumeInputs !== false})); }
 function profilePlacement(body, profile) {
   return k.transform(body, profileFrame(profile));
 }
@@ -157,7 +158,7 @@ export class FeatureEvaluator {
           this.cache.set(f.id, {key, result, version: ++this.sequence}); computed++;
         }
         outputs.set(featureId, result);
-        if (!f.suppressed) for (const input of f.inputs) consumed.add(input);
+        if (!f.suppressed && featurePolicies.get(f.type)?.consumeInputs !== false) for (const input of f.inputs) consumed.add(input);
         return result;
       } finally { active.delete(featureId); }
     };
