@@ -25,11 +25,11 @@ export class TaskRunner {
       if (!this.worker) {
         const worker = this.worker = this.factory();
         worker.onmessage = event => {
-          if (this.worker !== worker || !this.active || event.data?.id !== this.active.id) return;
+          if (this.worker !== worker || !this.active || event.data?.id !==this.active.id) return;
           const current = this.active, message = event.data;
           if (message.kind === 'progress') { try { current.onProgress?.(message.value); } catch {} return; }
           if (message.kind === 'result') this.finish(current, null, message.value);
-          else if (message.kind === 'error') { const error = new Error(message.message || 'Worker task failed'); error.name = message.name || 'Error'; this.finish(current, error); }
+          else if (message.kind === 'error') { const error = new Error(message.message || 'Worker task failed'); error.name = message.name || 'Error'; if(typeof message.code === 'string') error.code = message.code; this.finish(current, error); }
         };
         worker.onerror = event => { event.preventDefault?.(); if (this.worker === worker && this.active) { const current = this.active; this.kill(); this.finish(current, new Error(event.message || 'Worker crashed')); } };
         worker.onmessageerror = () => { if (this.worker === worker && this.active) { const current = this.active; this.kill(); this.finish(current, new Error('Worker message could not be decoded')); } };

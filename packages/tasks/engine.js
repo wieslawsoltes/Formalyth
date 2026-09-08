@@ -1,3 +1,4 @@
+import {offsetFaces,draftFaces,shellConvex,roundEdges} from '../topology/editing.js';
 import {installTopologyFeatures} from '../topology/features.js';
 import {buildTopology} from '../topology/index.js';
 import {chamferEdges,splitConvex} from '../topology/operations.js';
@@ -42,6 +43,10 @@ export class Engine {
   }
   dispatch(type, payload) {
     switch (type) {
+      case 'offsetFaces': return offsetFaces(payload.body,payload.faces,payload.distance,payload.options);
+      case 'draftFaces': return draftFaces(payload.body,payload.faces,payload.angle,payload.options);
+      case 'shellConvex': return shellConvex(payload.body,payload.openings,payload.thickness,payload.options);
+      case 'roundEdges': return roundEdges(payload.body,payload.edges,payload.radius,payload.options);
       case 'topology': return buildTopology(payload.body,payload.options);
       case 'chamfer': return chamferEdges(payload.body,payload.edges,payload.distance,payload.options);
       case 'splitConvex': return splitConvex(payload.body,payload.options);

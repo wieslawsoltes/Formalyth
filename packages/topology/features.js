@@ -1,7 +1,9 @@
+import {installEditingFeatures} from './editing-features.js';
 import {faceProfile} from './projection.js';
 import {registerFeature,featureRegistry} from '../document/index.js';
 import {chamferEdges,splitConvex} from './operations.js';
 export function installTopologyFeatures(){
+  installEditingFeatures();
   if(!featureRegistry.has('faceSketch'))registerFeature('faceSketch',({p,n,inputs})=>faceProfile(inputs[0],p.face,{tolerance:n('tolerance',1e-6)}),{consumeInputs:false});
   if(!featureRegistry.has('edgeChamfer'))registerFeature('edgeChamfer',({p,n,inputs})=>chamferEdges(inputs[0],p.edges,n('distance',1),{tolerance:n('tolerance',1e-6)}));
   if(!featureRegistry.has('splitConvex'))registerFeature('splitConvex',({p,n,numeric,inputs})=>{
