@@ -2,7 +2,11 @@
 
 An independent, MIT-licensed design and manufacturing workbench for the browser. Original plain JavaScript, HTML, CSS and SVG assets; native WebGPU rendering with a WebGL2 fallback. No runtime framework, remote service, CDN or package installation is required.
 
-**Version 0.3 is experimental. It is not a complete or fully compatible professional engineering suite.** See [implemented features and limitations](docs/FEATURES.md) and [engineering safety](docs/SAFETY.md).
+**Version 0.4 is experimental. It is not a complete or fully compatible professional engineering suite.** See [implemented features and limitations](docs/FEATURES.md) and [engineering safety](docs/SAFETY.md).
+
+## New in 0.4
+
+Viewport face/edge selection, parameter-driven convex edge chamfers, capped construction-plane splits, and associative face-derived sketches (including holes). Read the [0.4 implementation and scope](docs/CONTINUATION-0.4.md) and [topology contracts](docs/TOPOLOGY.md).
 
 ## Run
 
