@@ -1,3 +1,4 @@
+import {installSolidEditingCommands} from './solid-editing.js';
 import {h,toast,formDialog,report} from '../packages/ui/index.js';
 import {m4} from '../packages/math/index.js';
 import {expression,parameters} from '../packages/solver/index.js';
@@ -83,6 +84,7 @@ export function installTopologyCommands(ctx,ribbons){
   });
   const group=['Select & modify',['selection.body','selection.face','selection.edge','solid.chamfer','solid.split','sketch.fromFace','inspect.topology']];
   ribbons.Design.unshift(group);ribbons.Mesh.unshift(group);ribbons.Surface.unshift(['Select',['selection.body','selection.face','sketch.fromFace','inspect.topology']]);
+  installSolidEditingCommands(ctx,ribbons,{source,load,snapshot,assert,clear,setMode,getItems:()=>items});
   ctx.topologySelection={get mode(){return mode;},get items(){return items.map(({topology,...i})=>i);},setMode,clear};
   return ctx.topologySelection;
 }
