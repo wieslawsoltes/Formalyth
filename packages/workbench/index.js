@@ -1,3 +1,6 @@
+import {editModel} from '../document/graph.js';
+import {EditSession} from './edit-session.js';
+import {validateDocument} from '../document/index.js';
 /** Headless application controller. UI and worker transports are injected. */
 import {Project, createProject} from '../project/index.js';
 import {DesignDocument} from '../document/index.js';
@@ -10,7 +13,7 @@ export class Workbench {
   emit(event){for(const fn of this.listeners){try{fn(event);}catch(e){console.error('Workbench observer failed',e);}}}
   setProject(project){
     if(!(project instanceof Project))throw new TypeError('Expected unified Project');
-    new DesignDocument(project.data.model);this.sequence++;this.modelTasks.cancelAll();this.jobTasks.cancelAll();this.unsubscribe?.();
+    new DesignDocument(project.data.model);this.editSession?.cancel();this.sequence++;this.modelTasks.cancelAll();this.jobTasks.cancelAll();this.unsubscribe?.();
     this.project=project;this.assets.clear();this.available.clear();this.builtVersion=null;this.builtTimeline=null;this.scene=[];this.selected=null;this.reset=true;
     this.unsubscribe=project.subscribe(event=>this.emit({type:'project',...event}));this.emit({type:'replace'});
   }
@@ -30,6 +33,11 @@ export class Workbench {
   mutateModel(label,mutate){
     const document=new DesignDocument(this.project.data.model),result=mutate(document);
     this.project.transact(label,draft=>{draft.model=document.data;draft.name=document.data.name;draft.view.timeline=null;});return result;
+  }
+  beginEdit(options){this.editSession?.cancel();return this.editSession=new EditSession(this,options);}
+  async batchEdit(edits,label='Edit model'){
+    this.editSession?.cancel();const draft=validateDocument(editModel(this.project.data.model,edits));
+    this.project.transact(label,p=>{p.model=draft;p.name=draft.name;p.view.timeline=null;});await this.rebuild();
   }
   async addFeature(type,params={},inputs=[],name=type){const id=this.mutateModel(`Create ${name}`,d=>d.addFeature(type,params,inputs,name));this.selected=id;await this.rebuild();return id;}
   async editFeature(id,patch){this.mutateModel('Edit feature',d=>d.editFeature(id,patch));await this.rebuild();}
@@ -59,8 +67,8 @@ export class Workbench {
     return {result,sourceVersion:version,sourceTimeline:timeline};
   }
   assertFresh(record){this.assertCurrent();if(this.project.isStale(record)||(record.sourceTimeline??null)!==this.project.data.view.timeline)throw new Error('Result is stale. Regenerate it from the current geometry before exporting or simulating.');}
-  cancel(){this.modelTasks.cancelAll();this.jobTasks.cancelAll();}
-  dispose(){this.unsubscribe?.();this.modelTasks.dispose();this.jobTasks.dispose();this.listeners.clear();}
+  cancel(){this.editSession?.cancel();this.modelTasks.cancelAll();this.jobTasks.cancelAll();}
+  dispose(){this.editSession?.cancel();this.unsubscribe?.();this.modelTasks.dispose();this.jobTasks.dispose();this.listeners.clear();}
 }
 export function bearingProject(){
   const d=new DesignDocument();d.transact('Example parameters',data=>{data.name='Bearing housing';data.parameters={plateWidth:80,plateDepth:52,plateHeight:8,bossRadius:16,bossHeight:24};});

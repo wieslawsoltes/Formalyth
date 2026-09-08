@@ -1,3 +1,4 @@
+import {editModel} from '../document/graph.js';
 import {offsetFaces,draftFaces,shellConvex,roundEdges} from '../topology/editing.js';
 import {installTopologyFeatures} from '../topology/features.js';
 import {buildTopology} from '../topology/index.js';
@@ -23,23 +24,50 @@ import {importGeometry, exportGeometry} from '../exchange/index.js';
 
 installRegionFeatures();installConstructionFeatures();installTopologyFeatures();
 export class Engine {
-  constructor() { this.evaluator = new FeatureEvaluator(); this.sent = new Map(); this.epoch = crypto.randomUUID(); }
+  constructor() { this.evaluator = new FeatureEvaluator(); this.sent = new Map(); this.epoch = crypto.randomUUID(); this.previewState = null; this.prepared = new WeakMap(); }
   evaluate({document, upto = document.features.length, reset = false}) {
     validateDocument(document);
     if (!Number.isInteger(upto) || upto < 0 || upto > document.features.length) throw new RangeError('Invalid history position');
-    if (reset) { this.evaluator.clear(); this.sent.clear(); this.epoch = crypto.randomUUID(); }
+    if (reset) { this.evaluator.clear(); this.sent.clear(); this.previewState=null; this.epoch = crypto.randomUUID(); }
+    if(this.previewState?.text===JSON.stringify(document)&&this.previewState.upto===upto){this.evaluator=this.previewState.evaluator;this.previewState=null;}
     const result = this.evaluator.evaluate(document, {upto}), changes = [], removed = [];
     const ids = new Set(document.features.map(f => f.id));
     for (const id of this.sent.keys()) if (!ids.has(id)) { this.sent.delete(id); removed.push(id); }
     for (const [id, value] of result.outputs) {
       const version = `${this.epoch}:${this.evaluator.cache.get(id)?.version}`;
       if (this.sent.get(id) !== version) {
-        changes.push({id, value, version, ...(value?.positions ? {prepared: prepareMesh(value)} : {})});
+        changes.push({id, value, version, ...(value?.positions ? {prepared: this.prepare(value)} : {})});
         this.sent.set(id, version);
       }
     }
     return {scene: result.scene.map(({value, ...item}) => ({...item, version: this.sent.get(item.id)})), changes, removed,
       available: [...result.outputs.keys()], errors: result.errors, parameters: result.parameters, stats: {...result.stats, changedOutputs: changes.length}};
+  }
+  prepare(value) {
+    let prepared=this.prepared.get(value);if(!prepared){prepared=prepareMesh(value);this.prepared.set(value,prepared);}return prepared;
+  }
+  preview({document,edits,session,upto}) {
+    if(typeof session!=='string'||!session||session.length>100)throw new TypeError('Invalid preview session');
+    const draft=validateDocument(editModel(document,edits)),end=upto??draft.features.length;
+    const baseText=JSON.stringify(document);
+    let state=this.previewState;
+    if(!state||state.id!==session||state.baseText!==baseText){
+      const evaluator=new FeatureEvaluator();evaluator.cache=new Map(this.evaluator.cache);evaluator.sequence=this.evaluator.sequence;
+      state=this.previewState={id:session,baseText,evaluator,sent:new Map(this.sent),epoch:this.epoch};
+    }
+    state.evaluator.sequence=Math.max(state.evaluator.sequence,this.evaluator.sequence);
+    const result=state.evaluator.evaluate(draft,{upto:end}),changes=[];
+    // Reserve preview versions even after Cancel so another session cannot reuse
+    // the same GPU version key for different geometry.
+    this.evaluator.sequence=Math.max(this.evaluator.sequence,state.evaluator.sequence);
+    for(const[id,value]of result.outputs){
+      const version=`${state.epoch}:${state.evaluator.cache.get(id)?.version}`;
+      if(state.sent.get(id)!==version){changes.push({id,value,version,...(value?.positions?{prepared:this.prepare(value)}:{})});state.sent.set(id,version);}
+    }
+    // Only a fully validated preview is eligible for zero-recompute adoption on Apply.
+    state.text=result.errors.length?null:JSON.stringify(draft);state.upto=end;
+    return {scene:result.scene.map(({value,...item})=>({...item,version:state.sent.get(item.id)})),changes,errors:result.errors,parameters:result.parameters,
+      stats:{...result.stats,changedOutputs:changes.length},session};
   }
   dispatch(type, payload) {
     switch (type) {
@@ -53,6 +81,7 @@ export class Engine {
       case 'faceProfile': return faceProfile(payload.body,payload.face,payload.options);
       case 'solveSketch': return evaluateSketch(payload.sketch,payload.parameters||{},payload.options);
       case 'evaluate': return this.evaluate(payload);
+      case 'preview': return this.preview(payload);
       case 'inspect': return {bounds: meshBounds(payload.body), properties: massProperties(payload.body), topology: topology(payload.body)};
       case 'machining': {
         const settings = {...payload.settings}; let geometry = payload.geometry;

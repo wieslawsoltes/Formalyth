@@ -1,3 +1,4 @@
+import {FeatureGraph} from './graph.js';
 /** @module @formalyth/document — serializable feature graph, transactions and history. */
 import * as k from '../kernel/index.js';
 import {boolean, stitch} from '../kernel/csg.js';
@@ -22,10 +23,7 @@ export function validateDocument(data) {
   }
   for (const f of data.features) for (const input of f.inputs) if (!ids.has(input)) throw new ReferenceError(`Missing input ${input}`);
   parameters(data.parameters || {});
-  // Cycles are rejected on load and on every transaction, not deferred to rendering.
-  const map = new Map(data.features.map(f => [f.id, f])), visiting = new Set(), done = new Set();
-  const visit = feature => { if (done.has(feature.id)) return; if (visiting.has(feature.id)) throw new RangeError('Cyclic feature dependency'); visiting.add(feature.id); for (const input of feature.inputs) visit(map.get(input)); visiting.delete(feature.id); done.add(feature.id); };
-  data.features.forEach(visit); return data;
+  new FeatureGraph(data.features); return data;
 }
 export class DesignDocument {
   constructor(data = emptyDocument(), {historyLimit = 100} = {}) {
@@ -140,31 +138,39 @@ export class FeatureEvaluator {
   constructor() { this.cache = new Map(); this.sequence = 0; }
   clear() { this.cache.clear(); }
   evaluate(data, {upto = data.features.length} = {}) {
-    const start = performance.now(), values = parameters(data.parameters), features = data.features.slice(0, upto), map = new Map(features.map(f => [f.id, f]));
-    const outputs = new Map(), errors = [], active = new Set(), consumed = new Set(); let computed = 0, reused = 0;
-    const get = featureId => {
-      if (outputs.has(featureId)) return outputs.get(featureId);
-      const f = map.get(featureId); if (!f) throw new Error(`Input ${featureId} is unavailable at this timeline position`);
-      if (active.has(featureId)) throw new Error('Cyclic feature dependency'); active.add(featureId);
-      try {
-        const inputs = f.inputs.map(get), key = JSON.stringify([f.type, f.params, f.suppressed, referencedValues(f.params, values), f.inputs.map(i => this.cache.get(i)?.version)]), cached = this.cache.get(f.id);
+    const start=performance.now();
+    if(!Number.isInteger(upto)||upto<0||upto>data.features.length)throw new RangeError('Invalid history position');
+    const values=parameters(data.parameters),features=data.features.slice(0,upto),graph=new FeatureGraph(features,{allowMissing:true});
+    const outputs=new Map(),failures=new Map(),consumed=new Set();let computed=0,reused=0;
+    for(const featureId of graph.order){
+      const f=graph.byId.get(featureId);
+      try{
+        const inputs=f.inputs.map(id=>{
+          if(!graph.byId.has(id))throw new Error(`Input ${id} is unavailable at this timeline position`);
+          if(failures.has(id))throw new Error(`Input ${id} failed: ${failures.get(id).message}`);
+          return outputs.get(id);
+        });
+        const key=JSON.stringify([f.type,f.params,f.suppressed,referencedValues(f.params,values),f.inputs.map(id=>[id,this.cache.get(id)?.version])]),cached=this.cache.get(f.id);
         let result;
-        if (cached?.key === key) { result = cached.result; reused++; }
-        else {
-          const handler = featureRegistry.get(f.type); if (!handler) throw new TypeError(`Unsupported feature: ${f.type}`);
-          const n = (key, fallback) => expression(f.params[key] ?? fallback, values);
-          const numeric = value => Array.isArray(value) ? value.map(numeric) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, numeric(v)])) : expression(value, values);
-          result = f.suppressed ? inputs[0] || null : handler({p: f.params, n, numeric, inputs, parameters: values});
-          this.cache.set(f.id, {key, result, version: ++this.sequence}); computed++;
+        if(cached?.key===key){result=cached.result;reused++;}
+        else{
+          const handler=featureRegistry.get(f.type);if(!handler)throw new TypeError(`Unsupported feature: ${f.type}`);
+          const n=(key,fallback)=>expression(f.params[key]??fallback,values);
+          const numeric=value=>Array.isArray(value)?value.map(numeric):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([k,v])=>[k,numeric(v)])):expression(value,values);
+          result=f.suppressed?inputs[0]||null:handler({p:f.params,n,numeric,inputs,parameters:values});
+          this.cache.set(f.id,{key,result,version:++this.sequence});computed++;
         }
-        outputs.set(featureId, result);
-        if (!f.suppressed && featurePolicies.get(f.type)?.consumeInputs !== false) for (const input of f.inputs) consumed.add(input);
-        return result;
-      } finally { active.delete(featureId); }
-    };
-    for (const f of features) { try { get(f.id); } catch (error) { errors.push({id: f.id, name: f.name, message: error.message}); } }
-    for (const key of this.cache.keys()) if (!data.features.some(f => f.id === key)) this.cache.delete(key);
-    const scene = features.filter(f => outputs.get(f.id) && f.visible !== false && (f.visible === true || !consumed.has(f.id))).map(f => ({id: f.id, name: f.name, color: f.color, material: f.material, value: outputs.get(f.id)}));
-    return {scene, outputs, errors, parameters: values, stats: {computed, reused, milliseconds: performance.now()-start, cachedFeatures: this.cache.size}};
+        outputs.set(f.id,result);
+        if(!f.suppressed&&featurePolicies.get(f.type)?.consumeInputs!==false)for(const input of f.inputs){
+          let id=input;consumed.add(id);
+          // Suppression is a pass-through, not a second coincident display body.
+          while(graph.byId.get(id)?.suppressed&&graph.byId.get(id).inputs.length){id=graph.byId.get(id).inputs[0];consumed.add(id);}
+        }
+      }catch(error){failures.set(f.id,{id:f.id,name:f.name,message:error.message,code:error.code||'FEATURE_EVALUATION'});}
+    }
+    const allIds=new Set(data.features.map(f=>f.id));for(const key of this.cache.keys())if(!allIds.has(key))this.cache.delete(key);
+    const scene=features.filter(f=>!f.suppressed&&outputs.get(f.id)&&f.visible!==false&&(f.visible===true||!consumed.has(f.id))).map(f=>({id:f.id,name:f.name,color:f.color,material:f.material,value:outputs.get(f.id)}));
+    return {scene,outputs,errors:features.filter(f=>failures.has(f.id)).map(f=>failures.get(f.id)),parameters:values,
+      stats:{computed,reused,milliseconds:performance.now()-start,cachedFeatures:this.cache.size,graphVertices:graph.byId.size}};
   }
 }
