@@ -17,13 +17,13 @@ export class TriangleBVH {
     };
     this.root = count ? build(Array.from({length: count}, (_, i) => i)) : null;
   }
-  intersect(origin, direction) {
+  intersect(origin, direction, accept = null) {
     let best = null;
     const visit = node => {
       if (!node) return;
       const distance = rayBox(origin, direction, node.box);
       if (distance === null || (best && distance > best.t)) return;
-      if (node.ids) { for (const i of node.ids) { const hit = rayTriangle(origin, direction, ...triangleAt(this.body, i)); if (hit && (!best || hit.t < best.t)) best = {...hit, triangle: i}; } return; }
+      if (node.ids) { for (const i of node.ids) { const hit = rayTriangle(origin, direction, ...triangleAt(this.body, i)); if (hit && (!accept || accept(hit)) && (!best || hit.t < best.t)) best = {...hit, triangle: i}; } return; }
       const a = rayBox(origin, direction, node.left.box), b = rayBox(origin, direction, node.right.box);
       if (a !== null && (b === null || a < b)) { visit(node.left); visit(node.right); } else { visit(node.right); visit(node.left); }
     };

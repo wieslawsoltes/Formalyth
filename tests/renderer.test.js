@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {OrbitCamera} from '../packages/renderer/camera.js';
+import {prepareMesh,prepareLines} from '../packages/renderer/prepare.js';
+import {box} from '../packages/kernel/index.js';
+import {TriangleBVH} from '../packages/kernel/spatial.js';
+import {v3} from '../packages/math/index.js';
+test('camera projection and world ray agree',()=>{const c=new OrbitCamera();c.aspect=1.5;const p=[4,7,9],screen=c.project(p,900,600),ray=c.ray(screen[0],screen[1],900,600);assert.ok(v3.length(v3.cross(v3.sub(p,ray.origin),ray.direction))<1e-7);});
+test('render preparation retains cube creases without triangulation diagonals',()=>{const p=prepareMesh(box(2,3,4));assert.equal(p.vertices.length,12*18);assert.equal(p.edges.length,12*12);assert.deepEqual(p.origin,[0,0,2]);assert.equal(p.triangles,12);});
+test('BVH clipping predicate finds a visible hit behind the first intersection',()=>{const bvh=new TriangleBVH(box(10,10,10)),hit=bvh.intersect([0,0,20],[0,0,-1],h=>h.point[2]<=5);assert.equal(hit.point[2],0);assert.equal(hit.t,20);});
+test('line preparation has explicit interleaved normals',()=>{const p=prepareLines([[[0,0,0],[1,2,3]]]);assert.equal(p.vertices.length,12);assert.deepEqual(Array.from(p.vertices.slice(3,6)),[0,0,1]);});
