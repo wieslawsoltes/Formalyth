@@ -1,0 +1,6 @@
+import fs from 'node:fs';import path from 'node:path';import {spawnSync} from 'node:child_process';
+export function files(root){return fs.readdirSync(root,{withFileTypes:true}).flatMap(e=>e.name.startsWith('.')||['_site','node_modules','reports'].includes(e.name)?[]:e.isDirectory()?files(path.join(root,e.name)):[path.join(root,e.name)]);}
+const sources=files(process.cwd()).filter(p=>/\.(m?js)$/.test(p));let failures=0;
+for(const file of sources){const check=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});if(check.status!==0){console.error(check.stderr);failures++;}const text=fs.readFileSync(file,'utf8');for(const re of [/(?:\bfrom\s*|\bimport\s*)['"](\.[^'"]+)['"]/g,/new URL\(['"](\.[^'"]+)['"],\s*import\.meta\.url\)/g])for(const match of text.matchAll(re)){const target=path.resolve(path.dirname(file),match[1]);if(!fs.existsSync(target)){console.error(`Missing module: ${file}: ${match[1]}`);failures++;}}}
+for(const file of ['index.html','app/main.js','app/engine.worker.js','packages/renderer/index.js','LICENSE'])if(!fs.existsSync(file)){console.error('Missing release entry:',file);failures++;}
+console.log(`Verified syntax and local module references in ${sources.length} JavaScript files; ${failures} failures.`);if(failures)process.exitCode=1;

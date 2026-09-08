@@ -5,15 +5,30 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: formalyth-pages
+  cancel-in-progress: false
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test tests/*.test.js
+      - name: Numerical regression tests
+        run: |
+          mkdir -p reports
+          node --test tests/*.test.js | tee reports/unit-tests.tap
+      - run: npm run verify
+      - run: npm run bench
+      - run: npm run build
+      - name: Chromium end-to-end workflows
+        env:
+          SITE_ROOT: _site
+          CHROME_BIN: /usr/bin/google-chrome
+        run: npm run test:browser
       - name: Package exact committed source
         if: always()
         run: git archive --format=zip HEAD -o /tmp/Formalyth-source.zip
@@ -22,4 +37,26 @@ jobs:
         with:
           name: Formalyth-source
           path: /tmp/Formalyth-source.zip
-          retention-days: 7
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification
+          path: reports/
+          retention-days: 14
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - uses: actions/deploy-pages@v4
+        id: deployment
