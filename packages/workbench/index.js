@@ -11,16 +11,16 @@ export class Workbench {
   setProject(project){
     if(!(project instanceof Project))throw new TypeError('Expected unified Project');
     new DesignDocument(project.data.model);this.sequence++;this.modelTasks.cancelAll();this.jobTasks.cancelAll();this.unsubscribe?.();
-    this.project=project;this.assets.clear();this.available.clear();this.builtVersion=null;this.scene=[];this.selected=null;this.reset=true;
+    this.project=project;this.assets.clear();this.available.clear();this.builtVersion=null;this.builtTimeline=null;this.scene=[];this.selected=null;this.reset=true;
     this.unsubscribe=project.subscribe(event=>this.emit({type:'project',...event}));this.emit({type:'replace'});
   }
   async rebuild({fit=false}={}){
-    const token=++this.sequence,project=this.project,version=project.data.geometryVersion;this.emit({type:'building',active:true});
+    const token=++this.sequence,project=this.project,version=project.data.geometryVersion,timeline=project.data.view.timeline;this.emit({type:'building',active:true});
     try{
       const result=await this.modelTasks.run('evaluate',{document:project.data.model,upto:project.data.view.timeline??project.data.model.features.length,reset:this.reset},{key:'model'});
       if(token!==this.sequence||project!==this.project)return null;
-      if(version!==project.data.geometryVersion){this.reset=true;return null;}
-      this.reset=false;this.builtVersion=version;this.available=new Set(result.available);for(const id of result.removed)this.assets.delete(id);for(const item of result.changes)this.assets.set(item.id,item);
+      if(version!==project.data.geometryVersion||timeline!==project.data.view.timeline){this.reset=true;return null;}
+      this.reset=false;this.builtVersion=version;this.builtTimeline=timeline;this.available=new Set(result.available);for(const id of result.removed)this.assets.delete(id);for(const item of result.changes)this.assets.set(item.id,item);
       this.scene=result.scene.map(item=>({...this.assets.get(item.id),...item}));this.stats=result.stats;this.errors=result.errors;
       if(this.selected&&!project.data.model.features.some(f=>f.id===this.selected))this.selected=null;
       this.emit({type:'scene',fit});return result;
@@ -39,22 +39,26 @@ export class Workbench {
   async history(upto){if(!Number.isInteger(upto)||upto<0||upto>this.project.data.model.features.length)throw new RangeError('Invalid history position');this.project.updateView({timeline:upto===this.project.data.model.features.length?null:upto});await this.rebuild();}
   select(id){this.selected=id;this.emit({type:'selection'});}
   selectedValue({mesh=false}={}){
-    if(this.builtVersion!==this.project.data.geometryVersion)throw new Error('Geometry rebuild is not current');
+    if(this.builtVersion!==this.project.data.geometryVersion||this.builtTimeline!==this.project.data.view.timeline)throw new Error('Geometry rebuild is not current');
     if(this.selected&&!this.available.has(this.selected))throw new Error('Selected feature is unavailable or failed to rebuild');
     let item=this.assets.get(this.selected);
     if(!item)item=[...this.scene].reverse().find(i=>mesh?i.value?.positions:!!i.value);
     if(!item?.value||(mesh&&!item.value.positions))throw new TypeError(mesh?'Select a solid or mesh body':'Select a sketch or body');return item;
+  }
+  assertCurrent(){
+    if(this.builtVersion!==this.project.data.geometryVersion||this.builtTimeline!==this.project.data.view.timeline)throw new Error('Geometry rebuild is not current');
   }
   async task(type,payload,{key=type}={}){
     this.emit({type:'task',active:true,label:type});
     try{return await this.jobTasks.run(type,payload,{key});}finally{this.emit({type:'task',active:!!this.jobTasks.active,label:this.jobTasks.active?.type});}
   }
   async derived(type,payload){
-    const project=this.project,version=project.data.geometryVersion,result=await this.task(type,payload);
-    if(project!==this.project||version!==project.data.geometryVersion)throw new DOMException('Source geometry changed while computing; regenerate the result','AbortError');
-    return {result,sourceVersion:version};
+    this.assertCurrent();
+    const project=this.project,version=project.data.geometryVersion,timeline=project.data.view.timeline,result=await this.task(type,payload);
+    if(project!==this.project||version!==project.data.geometryVersion||timeline!==project.data.view.timeline)throw new DOMException('Source geometry changed while computing; regenerate the result','AbortError');
+    return {result,sourceVersion:version,sourceTimeline:timeline};
   }
-  assertFresh(record){if(this.project.isStale(record))throw new Error('Result is stale. Regenerate it from the current geometry before exporting or simulating.');}
+  assertFresh(record){this.assertCurrent();if(this.project.isStale(record)||(record.sourceTimeline??null)!==this.project.data.view.timeline)throw new Error('Result is stale. Regenerate it from the current geometry before exporting or simulating.');}
   cancel(){this.modelTasks.cancelAll();this.jobTasks.cancelAll();}
   dispose(){this.unsubscribe?.();this.modelTasks.dispose();this.jobTasks.dispose();this.listeners.clear();}
 }

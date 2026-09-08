@@ -3,6 +3,7 @@ import {m4, v3, bounds} from '../math/index.js';
 import {TriangleBVH} from '../kernel/spatial.js';
 import {OrbitCamera} from './camera.js';
 import {prepareMesh, prepareLines} from './prepare.js';
+import {worldBounds} from './scene-bounds.js';
 export {OrbitCamera, prepareMesh, prepareLines};
 const WGSL = `
 struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32>, clip: vec4<f32>, eye: vec4<f32>, light: vec4<f32>, flags: vec4<f32> };
@@ -130,8 +131,8 @@ export class Renderer {
     this.gridStep = step;
   }
   fit() {
-    const coords = []; for (const item of this.items.values()) coords.push(...item.bounds.min, ...item.bounds.max);
-    if (coords.length) this.camera.fit(bounds(coords)); this.grid(); this.invalidate();
+    const box = worldBounds([...this.items.values()]);
+    if (box) this.camera.fit(box); this.grid(); this.invalidate();
   }
   view(name) { this.camera.preset(name); this.invalidate(); }
   select(ids) { this.selected = new Set(ids); this.invalidate(); }
@@ -162,6 +163,7 @@ export class Renderer {
     out.set([resource.line ? 1 : 0, this.clipZ !== null && !entry.id.startsWith('grid') && !entry.id.startsWith('axis') ? 1 : 0, .35, 0], 32); return out;
   }
   draw() {
+    if (!this.ready || this.disposed) return;
     const started = performance.now(); let drawCalls = 0, bytes = 0, triangles = 0;
     const draws = [];
     for (const entry of this.lines.values()) if (entry.surface) draws.push([entry, entry.surface, false]);
@@ -179,7 +181,7 @@ export class Renderer {
       }
       gl.depthMask(true);
     }
-    this.onFrame({backend: this.backend, triangles, drawCalls, uploadedBytes: bytes, cpuMilliseconds: performance.now()-started, gridStep: this.gridStep});
+    this.onFrame({backend: this.backend, triangles, drawCalls, residentDrawBytes: bytes, cpuMilliseconds: performance.now()-started, gridStep: this.gridStep});
   }
   attachControls() {
     const signal = this.abort.signal, pointers = new Map(); let gesture = null, down = null, moved = false;
