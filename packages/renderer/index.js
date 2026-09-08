@@ -4,6 +4,7 @@ import {TriangleBVH} from '../kernel/spatial.js';
 import {OrbitCamera} from './camera.js';
 import {prepareMesh, prepareLines} from './prepare.js';
 import {worldBounds} from './scene-bounds.js';
+import {collectDraws} from './draw-order.js';
 export {OrbitCamera, prepareMesh, prepareLines};
 const WGSL = `
 struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32>, clip: vec4<f32>, eye: vec4<f32>, light: vec4<f32>, flags: vec4<f32> };
@@ -165,9 +166,8 @@ export class Renderer {
   draw() {
     if (!this.ready || this.disposed) return;
     const started = performance.now(); let drawCalls = 0, bytes = 0, triangles = 0;
-    const draws = [];
-    for (const entry of this.lines.values()) if (entry.surface) draws.push([entry, entry.surface, false]);
-    for (const entry of this.items.values()) { triangles += entry.triangles; if (!this.wireframe && entry.surface) draws.push([entry, entry.surface, false]); if ((this.edges || this.wireframe) && entry.edge) draws.push([entry, entry.edge, true]); }
+    const draws = collectDraws(this.items, this.lines, this);
+    for (const entry of this.items.values()) triangles += entry.triangles;
     if (this.device) {
       const encoder = this.device.createCommandEncoder(), pass = encoder.beginRenderPass({colorAttachments: [{view: this.multisample.createView(), resolveTarget: this.context.getCurrentTexture().createView(), clearValue: this.background, loadOp: 'clear', storeOp: 'store'}], depthStencilAttachment: {view: this.depth.createView(), depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'discard'}});
       for (const [entry, resource, edge] of draws) { const data = this.uniformData(entry, resource, edge); this.device.queue.writeBuffer(resource.uniform, 0, data); pass.setPipeline(resource.line ? this.linePipeline : this.pipeline); pass.setBindGroup(0, resource.bind); pass.setVertexBuffer(0, resource.buffer); pass.draw(resource.count); drawCalls++; bytes += resource.bytes; }

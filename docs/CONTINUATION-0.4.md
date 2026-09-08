@@ -43,6 +43,8 @@ Browser automation can call `selection.face`, `selection.edge`, `solid.chamfer`,
 
 ## Verification
 
-The added Node tests cover connectivity, soup welding, nonmanifold rejection, support-reference stability/ambiguity, analytical bevel volume, intersecting bevel planes, rigid transforms, split volume conservation, cap topology, large coordinates, face holes, parametric replay, native round trips and screen-space selection. The complete local numerical/domain suite has 199 passing tests.
+The added Node tests cover connectivity, soup welding, nonmanifold rejection, support-reference stability/ambiguity, analytical bevel volume, intersecting bevel planes, rigid transforms, split volume conservation, cap topology, large coordinates, face holes, parametric replay, native round trips and screen-space selection. The complete local numerical/domain suite has 201 passing tests.
 
 `scripts/topology-browser.mjs` extends the mandatory browser release gate with real pointer face/edge picks, a submitted chamfer dialog, driving-parameter edits, source-preserving face sketches, transactional splits, native reload and rejected concave operations. Browser and publication outcomes must be read from the exact commit's Actions run and artifacts, not inferred from the existence of test code. Native WebGPU testing remains required; software-adapter tests are not physical-GPU throughput qualification.
+
+The renderer draws solid depths before wire edges and depth-tested overlays, with selection overlays last. A browser pixel-readback assertion checks the selected edge color, in addition to the selection state, so a hidden highlight cannot pass as a usable selection.
