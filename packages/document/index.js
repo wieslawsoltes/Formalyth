@@ -2,7 +2,9 @@
 import * as k from '../kernel/index.js';
 import {boolean, stitch} from '../kernel/csg.js';
 import {m4, TAU, finite, integer} from '../math/index.js';
-import {expression, parameters, solveSketch} from '../solver/index.js';
+import {expression, parameters} from '../solver/index.js';
+import {evaluateSketch} from '../sketch/constraints.js';
+import {profileFrame} from '../construction/frames.js';
 export const SCHEMA_VERSION = 1;
 export function id(prefix) { const bytes = new Uint8Array(12); globalThis.crypto.getRandomValues(bytes); return `${prefix}-${Array.from(bytes, x => x.toString(16).padStart(2, '0')).join('')}`; }
 export function emptyDocument(name = 'Untitled design') {
@@ -71,9 +73,7 @@ const radians = degrees => degrees*Math.PI/180;
 export const featureRegistry = new Map();
 export function registerFeature(type, evaluate) { if (featureRegistry.has(type)) throw new Error(`Feature already registered: ${type}`); if (typeof evaluate !== 'function') throw new TypeError('Feature evaluator must be a function'); featureRegistry.set(type, evaluate); }
 function profilePlacement(body, profile) {
-  const plane = profile.plane || 'XY';
-  const rotation = plane === 'XZ' ? m4.rotation([1, 0, 0], Math.PI/2) : plane === 'YZ' ? m4.rotation([0, 1, 0], Math.PI/2) : m4.identity();
-  return k.transform(body, m4.multiply(m4.translation(0, 0, profile.z || 0), rotation));
+  return k.transform(body, profileFrame(profile));
 }
 const handlers = {
   box: ({n}) => k.box(n('width', 80), n('depth', 50), n('height', 10), n('radius', 0)),
@@ -81,17 +81,17 @@ const handlers = {
   cone: ({n}) => k.cone(n('radius', 20), n('topRadius', 10), n('height', 30), n('segments', 64)),
   sphere: ({n}) => k.sphere(n('radius', 20), n('segments', 48)),
   torus: ({n}) => k.torus(n('majorRadius', 25), n('minorRadius', 5), n('segments', 64)),
-  sketch: ({p, n, numeric}) => {
+  sketch: ({p, n, numeric, parameters: values, inputs}) => {
     let points, report = null;
     if (p.shape === 'circle') points = k.circle(n('radius', 20), n('segments', 64), [n('x', 0), n('y', 0)]);
     else if (p.shape === 'ellipse') points = k.ellipse(n('rx', 30), n('ry', 15), n('segments', 64));
     else if (p.shape === 'rectangle') points = k.rectangle(n('width', 50), n('depth', 30), n('radius', 0)).map(([x, y]) => [x+n('x', 0), y+n('y', 0)]);
-    else { const sketch = {points: numeric(p.points || []), constraints: p.constraints || [], circles: p.circles || []}; report = solveSketch(sketch);
+    else { const sketch = {points: numeric(p.points || []), constraints: p.constraints || [], circles: p.circles || []}; report = evaluateSketch(sketch, values);
       if (!report.converged) throw new Error(`Sketch constraints inconsistent (residual ${report.residual.toPrecision(3)})`);
       points = report.sketch.points;
       if (p.useCircle !== undefined) { const c = report.sketch.circles[p.useCircle]; if (!c) throw new Error('Sketch circle not found'); points = k.circle(c.radius, n('segments', 64), report.sketch.points[c.center]); }
     }
-    return {kind: 'profile', points: k.cleanProfile(points), plane: p.plane || 'XY', z: n('z', 0), report};
+    return {kind: 'profile', points: k.cleanProfile(points), plane: p.plane || 'XY', z: n('z', 0), report, ...(inputs[0]?.kind==='plane'?{frame:inputs[0].frame}:p.frame?{frame:profileFrame(p)}:{})};
   },
   extrude: ({p, n, inputs}) => { const profile = requireProfile(inputs[0]); return profilePlacement(k.extrude(profile.points, n('depth', 20), {topScale: n('topScale', 1), twist: radians(n('twist', 0)), steps: n('steps', 1)}), profile); },
   revolve: ({n, inputs}) => k.revolve(requireProfile(inputs[0]).points, radians(n('angle', 360)), n('segments', 64)),

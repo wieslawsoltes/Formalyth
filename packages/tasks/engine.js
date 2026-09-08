@@ -1,7 +1,11 @@
 /** DOM-free task dispatch for the browser worker and Node integration tests. */
+import {m4} from '../math/index.js';
+import {profileFrame} from '../construction/frames.js';
 import {FeatureEvaluator, validateDocument} from '../document/index.js';
 import {prepareMesh} from '../renderer/prepare.js';
 import {meshBounds, massProperties, topology, rectangle} from '../kernel/index.js';
+import {evaluateSketch} from '../sketch/constraints.js';
+import {installConstructionFeatures} from '../construction/index.js';
 import {installRegionFeatures} from '../regions/index.js';
 import {createToolpath, postProcess, simulateStock, nestRectangles} from '../manufacturing/index.js';
 import {sliceMesh, postAdditive} from '../manufacturing/additive.js';
@@ -12,7 +16,7 @@ import {evaluateAssembly, billOfMaterials, interference} from '../assembly/index
 import {solveCircuit, transient, acSweep} from '../electronics/index.js';
 import {importGeometry, exportGeometry} from '../exchange/index.js';
 
-installRegionFeatures();
+installRegionFeatures();installConstructionFeatures();
 export class Engine {
   constructor() { this.evaluator = new FeatureEvaluator(); this.sent = new Map(); this.epoch = crypto.randomUUID(); }
   evaluate({document, upto = document.features.length, reset = false}) {
@@ -34,11 +38,18 @@ export class Engine {
   }
   dispatch(type, payload) {
     switch (type) {
+      case 'solveSketch': return evaluateSketch(payload.sketch,payload.parameters||{},payload.options);
       case 'evaluate': return this.evaluate(payload);
       case 'inspect': return {bounds: meshBounds(payload.body), properties: massProperties(payload.body), topology: topology(payload.body)};
       case 'machining': {
         const settings = {...payload.settings}; let geometry = payload.geometry;
         if (settings.strategy !== 'parallel' && settings.strategy !== 'drill') {
+          if (geometry?.kind==='region'||geometry?.kind==='profile') {
+            const frame=profileFrame(geometry);
+            if(Math.abs(frame[8])>1e-8||Math.abs(frame[9])>1e-8)throw new TypeError('Three-axis machining requires a world-XY sketch; reorient the setup explicitly');
+            const map=loop=>loop.map(p=>m4.point(frame,[...p,0]).slice(0,2));
+            geometry=geometry.kind==='profile'?{...geometry,points:map(geometry.points)}:{...geometry,regions:geometry.regions.map(r=>({...r,outer:map(r.outer),holes:r.holes.map(map)}))};
+          }
           if (geometry?.kind === 'region') {
             if (geometry.regions.length !== 1) throw new RangeError('Machining requires one exterior region; split disjoint regions into operations');
             settings.islands = geometry.regions[0].holes; geometry = geometry.regions[0].outer;

@@ -4,6 +4,7 @@ import {boolean} from '../kernel/csg.js';
 import {m4} from '../math/index.js';
 import {registerFeature, featureRegistry} from '../document/index.js';
 import {classifyRegions} from './classify.js';
+import {profileFrame,extrusionRange} from '../construction/frames.js';
 export {classifyRegions, signedArea} from './classify.js';
 export function extrudeRegions(loops,depth,{epsilon=1e-7}={}){
   if(!Number.isFinite(depth)||depth<=epsilon)throw new RangeError('Extrusion depth must be positive');
@@ -15,9 +16,10 @@ export function extrudeRegions(loops,depth,{epsilon=1e-7}={}){
   });return merge(bodies);
 }
 export function installRegionFeatures(){
-  if(!featureRegistry.has('region'))registerFeature('region',({p,numeric})=>({kind:'region',...classifyRegions(numeric(p.loops))}));
-  if(!featureRegistry.has('extrudeRegion'))registerFeature('extrudeRegion',({inputs,n})=>{
+  if(!featureRegistry.has('region'))registerFeature('region',({p,numeric,inputs})=>({kind:'region',...classifyRegions(numeric(p.loops)),frame:profileFrame(inputs[0]?.kind==='plane'?inputs[0]:p)}));
+  if(!featureRegistry.has('extrudeRegion'))registerFeature('extrudeRegion',({inputs,n,p})=>{
     if(inputs[0]?.kind!=='region')throw new TypeError('Extrude regions requires a closed-region sketch');
-    return extrudeRegions(inputs[0].loops,n('depth',20));
+    const range=extrusionRange({depth:n('depth',20),offset:n('offset',0),extent:p.extent||'oneSide',secondDepth:n('secondDepth',0)}),lo=Math.min(...range),hi=Math.max(...range);
+    return transform(extrudeRegions(inputs[0].loops,hi-lo),m4.multiply(profileFrame(inputs[0]),m4.translation(0,0,lo)));
   });
 }
