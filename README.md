@@ -2,7 +2,7 @@
 
 An independent, MIT-licensed design and manufacturing workbench for the browser. Original plain JavaScript, HTML, CSS and SVG assets; native WebGPU rendering with a WebGL2 fallback. No runtime framework, remote service, CDN or package installation is required.
 
-**Version 0.4 is experimental. It is not a complete or fully compatible professional engineering suite.** See [implemented features and limitations](docs/FEATURES.md) and [engineering safety](docs/SAFETY.md).
+**Version 0.5 is experimental. It is not a complete or fully compatible professional engineering suite.** See [implemented features and limitations](docs/FEATURES.md) and [engineering safety](docs/SAFETY.md).
 
 ## New in 0.4
 
@@ -50,3 +50,7 @@ Reusable engines live in `packages/`; integration lives in `app/`. Computational
 ## License and provenance
 
 MIT. See [LICENSE](LICENSE). No proprietary code, SDKs, icons, screenshots, binary formats or branding were copied into this implementation. Shared concepts and published neutral-format specifications do not imply compatibility with any particular product. [Recovery audit](docs/RECOVERY.md) records the incomplete previous handoff and this continuation's reconstruction.
+
+## New in 0.5
+
+Direct editing now includes selected-face and all-support offsets, neutral-plane drafting, variable-thickness hollow bodies and sampled constant-radius edge rounds. The rounded-enclosure example combines these as an editable native feature history. See [0.5 workflows, API and limits](docs/CONTINUATION-0.5.md). These are bounded convex/faceted operations, not general exact B-rep or fillet-network support.

@@ -19,3 +19,5 @@ Formalyth is an independent experimental design and manufacturing workbench. The
 Run with Node 22 or newer: `npm start`, then open localhost port 4173. No npm dependency installation or bundler is required. `npm test`, `npm run verify`, `npm run bench`, and `npm run build` execute numerical tests, source validation, CPU benchmarks and static packaging. CI records browser checks and retains screenshots and source artifacts.
 
 Native files preserve cross-workspace data. The geometry kernel remains faceted, manufacturing output remains unqualified, selected-body meshing is approximate, electronics is ideal linear RLC simulation, and full product compatibility is not established. These boundaries are part of the documented contracts rather than hidden behind menu entries.
+
+- [0.5 direct editing, hollow bodies and rounded enclosures](CONTINUATION-0.5.md)

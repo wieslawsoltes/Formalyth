@@ -1,3 +1,4 @@
+import {solidEditingBrowserChecks} from './solid-editing-browser.mjs';
 import {topologyBrowserChecks} from './topology-browser.mjs';
 /** Dependency-free Chromium/CDP integration tests. Node 22+ required. */
 import fs from 'node:fs/promises';import os from 'node:os';import path from 'node:path';import {spawn} from 'node:child_process';import assert from 'node:assert/strict';
@@ -70,6 +71,7 @@ try{
  await check('autosave reload retains construction planes and driving expressions',`return formalyth.workbench.project.data.model.features.some(f=>f.type==='constructionPlane')&&formalyth.workbench.project.data.model.features.some(f=>f.type==='sketch'&&f.params.constraints?.some(c=>c.value==='span'));`);
  await fs.writeFile('reports/workbench-construction.png',Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
  await topologyBrowserChecks({evaluate,send,check,until,clickElement,capture:async name=>fs.writeFile('reports/'+name,Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'))});
+ await solidEditingBrowserChecks({evaluate,send,check,until,clickElement,capture:async name=>fs.writeFile('reports/'+name,Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'))});
  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await delay(150);await check('mobile viewport remains usable',`return document.querySelector('#canvas').getBoundingClientRect().width>300&&document.documentElement.scrollWidth<=390;`);await fs.writeFile('reports/workbench-mobile.png',Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
  await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
  await evaluate('formalyth.ready=false');await send('Page.navigate',{url:base});await until(()=>evaluate('window.formalyth?.ready'),'automatic graphics backend');const backend=await evaluate('formalyth.renderer.backend');await delay(500);

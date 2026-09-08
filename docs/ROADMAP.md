@@ -25,3 +25,7 @@ Broaden neutral-format coverage entity by entity using independent corpora. Keep
 ## Completion criteria
 
 A feature is complete only when its algorithm, public library contract, project serialization, UI workflow, failure behavior, regression fixtures and user documentation agree. Passing a demonstration or adding a menu item is not sufficient. Full product parity is not currently established.
+
+## 0.5 implemented boundary
+
+Convex planar face offsets, support-solid offsets, neutral-plane draft, convex shells and nonmeeting parallel straight-edge rounds are now implemented. General concave edits, exact analytic curved offsets and rolling-ball corner/fillet networks remain outstanding; the limited faceted operations do not satisfy those broader roadmap items.

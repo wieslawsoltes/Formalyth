@@ -53,3 +53,7 @@ IndexedDB writes serialize complete snapshots atomically. Explicit native-file e
 The camera is orthographic. WebGPU uses typed vertex buffers, WGSL, MSAA, depth testing and per-object uniforms; WebGL2 implements the fallback. Picking uses a lazily constructed triangle BVH. Repainting is invalidation-driven rather than an idle animation loop. GPU buffers are released when objects or overlays are replaced.
 
 Performance is not uniform across algorithms. Faceted Boolean cleanup and pairwise region validation can be expensive. Project snapshots and JSON serialization remain proportional to document size. UI record inspection can be costly for large results. Benchmarks record cold and cached CPU build samples; they do not establish frame rates or large-assembly capacity. These are explicit optimization targets, not hidden production claims.
+
+## Direct editing extensions (0.5)
+
+The topology package now reconstructs support halfspaces for planar offsets and neutral-plane drafts. Shelling combines checked inner/outer support intersections with the existing faceted Boolean kernel. Straight-edge rounding clips sampled cylinder tangents with a separately validated ideal tangency footprint. All commands share the existing selection cache and source-context checks, and run preflight and replay through Workers. See CONTINUATION-0.5.md for numerical bounds and unsupported cases.
