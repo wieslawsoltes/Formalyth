@@ -15,11 +15,12 @@ export class Workbench {
     this.unsubscribe=project.subscribe(event=>this.emit({type:'project',...event}));this.emit({type:'replace'});
   }
   async rebuild({fit=false}={}){
-    const token=++this.sequence,project=this.project;this.emit({type:'building',active:true});
+    const token=++this.sequence,project=this.project,version=project.data.geometryVersion;this.emit({type:'building',active:true});
     try{
       const result=await this.modelTasks.run('evaluate',{document:project.data.model,upto:project.data.view.timeline??project.data.model.features.length,reset:this.reset},{key:'model'});
       if(token!==this.sequence||project!==this.project)return null;
-      this.reset=false;this.builtVersion=project.data.geometryVersion;this.available=new Set(result.available);for(const id of result.removed)this.assets.delete(id);for(const item of result.changes)this.assets.set(item.id,item);
+      if(version!==project.data.geometryVersion){this.reset=true;return null;}
+      this.reset=false;this.builtVersion=version;this.available=new Set(result.available);for(const id of result.removed)this.assets.delete(id);for(const item of result.changes)this.assets.set(item.id,item);
       this.scene=result.scene.map(item=>({...this.assets.get(item.id),...item}));this.stats=result.stats;this.errors=result.errors;
       if(this.selected&&!project.data.model.features.some(f=>f.id===this.selected))this.selected=null;
       this.emit({type:'scene',fit});return result;
