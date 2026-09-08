@@ -19,7 +19,10 @@ try{
  const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(r.exceptionDetails.exception?.description||r.exceptionDetails.text);return r.result.value;};
  probe=evaluate;const check=async(name,expression)=>{const result=await evaluate(`(async()=>{${expression}})()`);assert.ok(result,name);checks.push({name,passed:true});console.log('PASS',name);return result;};
  const close=()=>evaluate(`document.querySelectorAll('dialog[open]').forEach(d=>d.close());true`);
- await send('Page.navigate',{url:base+'?renderer=webgl'});await until(()=>evaluate('window.formalyth?.ready'),'workbench boot');
+ await send('Page.navigate',{url:base});await until(()=>evaluate('window.formalyth?.ready'),'native workbench boot');
+ await check('native WebGPU cold-start renders the example',`const r=formalyth.renderer;r.draw();await r.device?.queue.onSubmittedWorkDone();return r.backend==='WebGPU'&&r.ready&&r.items.size>0&&formalyth.graphicsErrors.length===0;`);
+ await delay(300);await fs.writeFile('reports/workbench-webgpu-example.png',Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
+ await evaluate('formalyth.ready=false');await send('Page.navigate',{url:base+'?renderer=webgl'});await until(()=>evaluate('window.formalyth?.ready'),'WebGL fallback boot');
  await check('example renders through real WebGL2',`const f=window.formalyth;return f.renderer.backend==='WebGL2'&&f.renderer.items.size>0&&f.workbench.errors.length===0;`);
  await fs.writeFile('reports/workbench-light.png',Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
  await evaluate(`window.formalyth.execute('ui.theme')`);await delay(200);await fs.writeFile('reports/workbench-dark.png',Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));await evaluate(`window.formalyth.execute('ui.theme')`);
@@ -53,5 +56,5 @@ try{
  await check('native WebGPU render path renders geometry',`const r=formalyth.renderer;r.draw();await r.device.queue.onSubmittedWorkDone();return r.items.size>0&&r.ready&&formalyth.graphicsErrors.length===0;`);
  await fs.writeFile('reports/workbench-webgpu.png',Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
  assert.deepEqual(errors,[],'No unhandled browser exceptions');const result={passed:true,checks:checks.length,backend,webgpuValidated:true,softwareRendering:true,tests:checks,unhandledErrors:errors};await fs.writeFile('reports/browser.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
-}catch(error){if(probe){try{console.log('Browser state:',await probe('document.body.innerText.slice(0,1800)'));}catch{}}await fs.writeFile('reports/browser.json',JSON.stringify({passed:false,error:error.stack,checks,unhandledErrors:errors},null,2));console.error(error);process.exitCode=1;}
+}catch(error){if(probe){try{const state=await probe(`({text:document.body.innerText.slice(0,2000),graphicsErrors:window.formalyth?.graphicsErrors,backend:window.formalyth?.renderer.backend,ready:window.formalyth?.renderer.ready,scene:window.formalyth?.workbench.scene.length,stats:window.formalyth?.workbench.stats})`);await fs.writeFile('reports/browser-failure-state.json',JSON.stringify(state,null,2));console.log('Browser state:',state);}catch{}}await fs.writeFile('reports/browser.json',JSON.stringify({passed:false,error:error.stack,checks,unhandledErrors:errors},null,2));console.error(error);process.exitCode=1;}
 finally{ws?.close();chrome?.kill('SIGKILL');server.closeAllConnections();await new Promise(r=>server.close(r));await fs.writeFile('reports/chromium.log',log);await fs.rm(dir,{recursive:true,force:true}).catch(()=>{});}

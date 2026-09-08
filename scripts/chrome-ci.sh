@@ -1,17 +1,12 @@
 #!/usr/bin/env bash
-# Disposable CI browser: ANGLE and Dawn share Mesa's software Vulkan ICD.
+# Disposable CI only. This configuration passed independent WebGPU/WebGL2
+# readback and screenshot pixel checks in scripts/gpu-probe.mjs.
 set -euo pipefail
-icd="$(find /usr/share/vulkan/icd.d -maxdepth 1 -name 'lvp_icd*.json' -print -quit)"
-if [[ -z "$icd" ]]; then echo 'Mesa lavapipe ICD is required for graphics CI' >&2; exit 1; fi
-export VK_ICD_FILENAMES="$icd"
-export VK_DRIVER_FILES="$icd"
-export LIBGL_ALWAYS_SOFTWARE=1
 args=()
 for arg in "$@"; do
   case "$arg" in
-    --headless=*|--use-vulkan=*|--use-webgpu-adapter=*|--disable-vulkan-surface|--enable-features=*|--ozone-platform=*) ;;
+    --headless=*|--use-vulkan=*|--use-webgpu-adapter=*|--use-angle=*|--use-gl=*|--disable-vulkan-surface|--enable-features=*|--ozone-platform=*) ;;
     *) args+=("$arg") ;;
   esac
 done
-printf 'Graphics CI: %s\n' "$icd" >&2
-exec /usr/bin/google-chrome "${args[@]}" --headless=new --no-first-run --no-default-browser-check --disable-search-engine-choice-screen --ozone-platform=x11 --use-vulkan=native --enable-features=Vulkan --disable-vulkan-surface --enable-gpu
+exec /usr/bin/google-chrome "${args[@]}" --no-first-run --no-default-browser-check --disable-search-engine-choice-screen --use-gl=angle --use-angle=vulkan --enable-features=Vulkan --use-vulkan=swiftshader --use-webgpu-adapter=swiftshader --disable-vulkan-surface
