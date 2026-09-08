@@ -1,10 +1,10 @@
-# Implemented features and boundaries — 0.5
+# Implemented features and boundaries — 0.6
 
 An implemented entry means a real algorithm and command exist; it does not establish production qualification or parity with another application. The tests in `tests/` and the browser checks in `scripts/browser.mjs` define the demonstrated cases.
 
 | Area | Available in the workbench | Boundaries / not implemented |
 | --- | --- | --- |
-| Application | Ten contextual workspaces; browser, properties, history, command palette, native dialogs, light/dark themes, responsive panels, keyboard and touch navigation | No multi-user collaboration, accounts, cloud jobs or full UI customization |
+| Application | Ten contextual workspaces; compact command menus, docked tools, in-place validated previews, graphical parameter table, virtualized browser/history, contextual actions, resizable panels, pinned command search, light/dark themes, responsive panels and keyboard navigation | No complete professional-suite UI parity, multi-document tab manager, graphical PCB editor, collaboration or full customization; some complex fields retain advanced JSON editors |
 | Projects | Native schema-2 files, schema-1 migration, immutable cross-domain transactions, bounded undo/redo, revision-safe coalesced autosave, optimistic IndexedDB conflict detection, named snapshots, timeline/source stale-output tracking | JSON snapshots scale with document size; browser storage is not a backup service |
 | Sketching | Interactive rectangles, tessellated circles and closed polygons; move vertices, snapping, multiple loops, holes/islands, undo; dimensioned parametric profiles; graphical polygon vertex/edge selection, fixed/horizontal/vertical/driving-distance constraints, named dimension editing, removal and undo/redo; JSON-defined additional constraints | Graphical editor is limited to one polygon with 64 vertices and no circles; no complete analytic sketch UI, arbitrary trim/extend, automatic region extraction from intersecting open entities or persistent analytic sketch topology |
 | Solid modeling | Construction planes (XY/XZ/YZ or custom normal), signed/symmetric/two-sided multi-loop extrusion with new/join/cut/intersect intent, primitives, extrusion, revolve, loft, sweep, helix, faceted union/subtract/intersect, holes, box pockets, transforms, patterns, mirrors, specialized tubes/open boxes, parameters and cached feature replay | No exact trimmed B-rep, persistent face naming, general fillet networks, arbitrary concave shell/draft, broad healing or exact surface intersections |
@@ -22,7 +22,7 @@ An implemented entry means a real algorithm and command exist; it does not estab
 | Drawing | Orthographic faceted projections, hidden-line classification, projected dimensions, SVG sheet and title data | No complete drafting-standard system, associative annotation editing or exact analytic hidden-line engine |
 | Electronics | Circuit JSON editing, ideal RLC plus independent sources, DC, AC sweep and backward-Euler transient; persisted circuit/results | No graphical schematic editor, PCB routing, Gerber generation, semiconductor device models or electrical-product certification |
 | Exchange | STL, OBJ, PLY, embedded static glTF/GLB, bounded text DXF, faceted STEP | No foreign native project compatibility; analytic STEP and other unsupported entities reject explicitly |
-| Rendering | Native WebGPU and WebGL2 fallback, orthographic camera, shaded faces/creases, clipping, object selection, retained buffers and demand-driven drawing | No photorealistic ray tracing, perspective-camera UI, GPU deformation contours or hardware benchmark qualification |
+| Rendering | Native WebGPU and WebGL2 fallback, orthographic/perspective cameras and saved views, shaded faces/creases, clipping, object selection, retained buffers and demand-driven drawing | No photorealistic ray tracing, GPU deformation contours or hardware benchmark qualification |
 
 ## Performance behavior
 
@@ -33,3 +33,7 @@ Cold faceted Boolean construction remains a bottleneck; whole-project JSON cloni
 ## Verification interpretation
 
 Numerical tests check selected invariants such as topology, volume, parameter caching, equation residuals, analytical circuit responses, state migration and cancellation. Browser tests exercise cross-workspace commands, dialogs, save/load, mobile layout and both rendering backends. Passing these cases is not proof of unrestricted compatibility, numerical robustness for arbitrary models, or machine safety.
+
+## 0.6 UI and editing performance
+
+Preview is speculative: only Apply creates an undo step. Generic feature creation/editing and inline scalar properties use this mechanism; specialized manufacturing and topology creation forms are docked but do not all implement automatic live preview. Browser/history DOM windows are bounded by visible rows. Feature dependency traversal is iterative and indexed; reverse-ordered 5,000-feature regression fixtures do not use recursive evaluation. Renderer counters distinguish fresh geometry uploads from resident draw-buffer bytes, and conservative frustum culling skips fully off-screen bodies. These changes do not eliminate whole-project serialization costs or establish a physical-GPU frame-rate guarantee.

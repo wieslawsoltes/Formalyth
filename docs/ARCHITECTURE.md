@@ -50,10 +50,19 @@ IndexedDB writes serialize complete snapshots atomically. Explicit native-file e
 
 ## Rendering and performance boundaries
 
-The camera is orthographic. WebGPU uses typed vertex buffers, WGSL, MSAA, depth testing and per-object uniforms; WebGL2 implements the fallback. Picking uses a lazily constructed triangle BVH. Repainting is invalidation-driven rather than an idle animation loop. GPU buffers are released when objects or overlays are replaced.
+The camera supports orthographic and perspective projection. WebGPU uses typed vertex buffers, WGSL, MSAA, depth testing and per-object uniforms; WebGL2 implements the fallback. Picking uses a lazily constructed triangle BVH. Repainting is invalidation-driven rather than an idle animation loop. GPU buffers are released when objects or overlays are replaced.
 
 Performance is not uniform across algorithms. Faceted Boolean cleanup and pairwise region validation can be expensive. Project snapshots and JSON serialization remain proportional to document size. UI record inspection can be costly for large results. Benchmarks record cold and cached CPU build samples; they do not establish frame rates or large-assembly capacity. These are explicit optimization targets, not hidden production claims.
 
 ## Direct editing extensions (0.5)
 
 The topology package now reconstructs support halfspaces for planar offsets and neutral-plane drafts. Shelling combines checked inner/outer support intersections with the existing faceted Boolean kernel. Straight-edge rounding clips sampled cylinder tangents with a separately validated ideal tangency footprint. All commands share the existing selection cache and source-context checks, and run preflight and replay through Workers. See CONTINUATION-0.5.md for numerical bounds and unsupported cases.
+
+
+## 0.6 workbench and speculative editing
+
+The native UI is divided into `app/workbench-ui.js` (chrome, scheduling, menus and input), `workbench-panels.js` (virtual browser/history and retained inspectors), and `workbench-actions.js` (palettes, parameter editing and saved views). Standalone widgets live in `packages/ui`: bounded virtual lists, keyed frame invalidations, native menus, field metadata, forms, preferences and lazy data inspection. No runtime framework was introduced.
+
+`packages/document/graph.js` indexes dependencies and performs stack-based topological traversal, dependency-safe reordering and atomic edit batches. `EditSession` captures a source project/version/timeline and evaluates speculative changes through the modeling Worker. A separate evaluator cache shares unchanged immutable results; it cannot mutate committed history. Apply adopts an exact validated preview cache before the committed evaluation. Cache-version counters reserve preview versions even when canceled, avoiding reuse of a GPU identity for a different result.
+
+`packages/renderer/projection.js` provides perspective matrices, conservative homogeneous frustum tests and allowlisted camera persistence. Per-resource uniform arrays and per-frame camera data are reused. Counters separately expose new geometry bytes, resident draw bytes, culled bodies and CPU submission time. Whole-document JSON cloning and model-space Boolean complexity remain separate performance limits.

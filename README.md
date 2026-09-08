@@ -1,56 +1,52 @@
 # Formalyth
 
-An independent, MIT-licensed design and manufacturing workbench for the browser. Original plain JavaScript, HTML, CSS and SVG assets; native WebGPU rendering with a WebGL2 fallback. No runtime framework, remote service, CDN or package installation is required.
+An independent, MIT-licensed design and manufacturing workbench for the browser. Plain JavaScript, HTML, CSS and original SVG assets; native WebGPU rendering with a WebGL2 fallback. No runtime framework, remote service, CDN or package installation is required.
 
-**Version 0.5 is experimental. It is not a complete or fully compatible professional engineering suite.** See [implemented features and limitations](docs/FEATURES.md) and [engineering safety](docs/SAFETY.md).
+**Version 0.6 is experimental, not a fully compatible professional engineering suite.** The [feature matrix](docs/FEATURES.md) and [engineering safety notes](docs/SAFETY.md) distinguish working capabilities from unsupported or unqualified operations.
 
-## New in 0.4
+## Workbench 0.6
 
-Viewport face/edge selection, parameter-driven convex edge chamfers, capped construction-plane splits, and associative face-derived sketches (including holes). Read the [0.4 implementation and scope](docs/CONTINUATION-0.4.md) and [topology contracts](docs/TOPOLOGY.md).
+The interface now uses compact contextual tool menus, modeless docked panels, typed parameter controls, in-place live previews, a graphical parameter table, virtualized browser/history lists, dependency-aware feature actions, resizable panels, searchable pinned commands, perspective and saved camera views, and directly selectable workspace records.
 
-## Run
+The core indexes dependencies without recursive traversal. A validated modeling preview is isolated from project history until Apply, and its geometry can then be adopted without recomputation. See [workbench and engine contracts](docs/CONTINUATION-0.6.md).
 
-Use Node 22 or newer:
+## Run locally
+
+Use Node 22 or newer. No npm dependency installation is needed.
 
 ```sh
 npm start
 ```
 
-Open `http://localhost:4173`. The static deployment target is [Formalyth on GitHub Pages](https://wieslawsoltes.github.io/Formalyth/). The latest [Actions run](https://github.com/wieslawsoltes/Formalyth/actions) records whether that revision passed validation and deployed; a configured URL alone does not prove a successful deployment.
+Open `http://localhost:4173`. The publication target is [Formalyth on GitHub Pages](https://wieslawsoltes.github.io/Formalyth/). [GitHub Actions](https://github.com/wieslawsoltes/Formalyth/actions) records the exact validated and deployed revision.
 
 ```sh
 npm test
 npm run verify
 npm run bench
 npm run build
-# Chromium required. CHROME_BIN can point to its executable.
+# Chromium required; CHROME_BIN can specify its executable.
 npm run test:browser
 ```
 
-On Linux CI the browser test runs under Xvfb and uses software Vulkan to exercise both WebGL2 and native WebGPU. This is API/render-path verification, not hardware-GPU performance qualification. The deploy job runs only after the numerical, source, build and browser gates succeed. Actions retains the exact committed source, machine-readable reports and screenshots.
+Release gates cover numerical/domain tests, source validation, static packaging, and browser workflows on both native WebGPU and WebGL2. CI retains exact committed source, machine-readable reports and screenshots. Software graphics adapters test API/render-path behavior, not physical-GPU throughput.
 
-## New in 0.3
+## Working in the application
 
-Construction planes, signed/symmetric/two-sided profile extrusions with join/cut/intersect, a worker-backed graphical polygon constraint editor, named driving dimensions, conflict-detecting IndexedDB saves, and revision-safe coalesced autosave. See [0.3 implementation notes](docs/CONTINUATION-0.3.md).
+Drag to orbit, Shift-drag to pan, wheel or pinch to zoom. **F** fits the model and **S** opens commands. **Ctrl/Cmd+S** exports the native project. Double-click a feature to edit; right-click for history, visibility and dependency-aware actions. Tool menus expose secondary commands without an overcrowded toolbar. Apply stores one validated history step; Cancel discards a speculative edit.
 
-## Workflows
+The ten workspaces are Design, Surface, Mesh, Sheet Metal, Assemble, Manufacture, Additive, Simulation, Drawing and Electronics. Native `.formalyth` files retain modeling history and cross-workspace records. IndexedDB provides revision-checked autosave and named snapshots. Export a native backup rather than relying solely on browser storage.
 
-The application combines Design, Surface, Mesh, Sheet Metal, Assemble, Manufacture, Additive, Simulation, Drawing and Electronics workspaces. It includes parametric feature history, numerical sketch constraints, closed sketch regions with nested holes/islands, faceted solids and Booleans, tree-joint assemblies, draft milling and printing paths, selected-body voxel analysis, projected drawings and ideal linear RLC circuits.
+## Reusable engines and documentation
 
-Native `.formalyth` files preserve modeling history and cross-workspace records in a versioned, validated project. IndexedDB autosave and named local snapshots are available. Export a native file for portable backup: browser storage is not a backup service.
+Computational engines are in `packages/`; application integration is in `app/`. Modeling and long-running jobs use separate cancellable Workers. Incremental evaluation transfers changed geometry only and the renderer retains unchanged resources.
 
-Drag to orbit, Shift-drag to pan, wheel/pinch to zoom. **F** fits the model, **S** opens the command palette, and **Ctrl/Cmd+S** exports the project. Double-click a history tile to edit, right-click to roll back. Commands reject unavailable or failed source geometry, and stale machining results cannot be posted through the workbench.
+[Architecture](docs/ARCHITECTURE.md) · [Feature matrix](docs/FEATURES.md) · [API examples](docs/API.md) · [Interchange](docs/FORMATS.md) · [Development](docs/DEVELOPMENT.md) · [Roadmap](docs/ROADMAP.md)
 
-## Architecture
+Implementation notes: [construction and graphical constraints](docs/CONTINUATION-0.3.md), [topology selection and convex chamfers](docs/CONTINUATION-0.4.md), [direct editing and hollow enclosures](docs/CONTINUATION-0.5.md), and [the 0.6 workbench](docs/CONTINUATION-0.6.md).
 
-Reusable engines live in `packages/`; integration lives in `app/`. Computational packages are DOM-free. Modeling and long-running jobs use separate cancellable Workers. Incremental builds transfer changed geometry only and the viewport retains unchanged GPU resources.
+The geometry kernel remains faceted. Manufacturing output is an unqualified draft, analysis meshes are approximate, and some specialized UI fields still use advanced JSON. Exact analytic B-rep, unrestricted fillet networks and complete graphical domain editors remain future work, not hidden implementations.
 
-[Architecture](docs/ARCHITECTURE.md) · [Feature matrix](docs/FEATURES.md) · [API examples](docs/API.md) · [Interchange scope](docs/FORMATS.md) · [Development](docs/DEVELOPMENT.md) · [Roadmap](docs/ROADMAP.md)
+## License
 
-## License and provenance
-
-MIT. See [LICENSE](LICENSE). No proprietary code, SDKs, icons, screenshots, binary formats or branding were copied into this implementation. Shared concepts and published neutral-format specifications do not imply compatibility with any particular product. [Recovery audit](docs/RECOVERY.md) records the incomplete previous handoff and this continuation's reconstruction.
-
-## New in 0.5
-
-Direct editing now includes selected-face and all-support offsets, neutral-plane drafting, variable-thickness hollow bodies and sampled constant-radius edge rounds. The rounded-enclosure example combines these as an editable native feature history. See [0.5 workflows, API and limits](docs/CONTINUATION-0.5.md). These are bounded convex/faceted operations, not general exact B-rep or fillet-network support.
+MIT. See [LICENSE](LICENSE). Original implementation and assets, with no proprietary SDK or runtime engine dependency. [Recovery audit](docs/RECOVERY.md) records the earlier incomplete handoff and reconstruction.
