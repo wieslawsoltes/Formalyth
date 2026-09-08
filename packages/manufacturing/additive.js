@@ -14,10 +14,15 @@ function closedLoops(segments,tolerance=1e-6){
 }
 export function sliceMesh(body,{layerHeight=.3,lineWidth=.45,shells=2,infill=.2,solidLayers=3,maxLayers=2000}={}){
   positive(layerHeight,'layer height');positive(lineWidth,'line width');if(layerHeight>lineWidth)throw new RangeError('Layer height exceeds extrusion width');integer(shells,1,10,'perimeters');finite(infill);if(infill<0||infill>1)throw new RangeError('Infill must be between 0 and 1');integer(solidLayers,0,100);integer(maxLayers,1,10000);
-  if(!topology(body).watertight)throw new TypeError('Slicing requires a watertight consistently oriented mesh');const bounds=meshBounds(body),count=Math.ceil(bounds.size[2]/layerHeight);integer(count,1,maxLayers,'layer count');if(count*body.indices.length/3>30000000)throw new RangeError('Slice triangle-plane work budget exceeded');
+  if(!topology(body).watertight)throw new TypeError('Slicing requires a watertight consistently oriented mesh');const bounds=meshBounds(body),ratio=bounds.size[2]/layerHeight,nearest=Math.round(ratio);
+  // Do not add a near-zero cap layer when a computed bound lies a few ULPs
+  // above an exact layer multiple. Coordinate-scale error is capped at 1e-6
+  // of a layer; real fractional layers are still retained.
+  const ratioNoise=Math.min(1e-6,64*Number.EPSILON*Math.max(1,...bounds.min.map(Math.abs),...bounds.max.map(Math.abs),bounds.size[2])/layerHeight);
+  const count=nearest>=1&&Math.abs(ratio-nearest)<=ratioNoise?nearest:Math.ceil(ratio);integer(count,1,maxLayers,'layer count');if(count*body.indices.length/3>30000000)throw new RangeError('Slice triangle-plane work budget exceeded');
   const layers=[];let totalLength=0,extrusionVolume=0,totalSegments=0;
   for(let layer=0;layer<count;layer++){
-    const bottom=bounds.min[2]+layer*layerHeight,top=Math.min(bounds.max[2],bottom+layerHeight),height=top-bottom,contours=closedLoops(section(body,(bottom+top)/2)),depths=contours.map((p,i)=>contours.reduce((n,q,j)=>n+(i!==j&&Math.abs(area2(q))>Math.abs(area2(p))&&pointInPolygon(p[0],q)?1:0),0)),paths=[];
+    const bottom=bounds.min[2]+layer*layerHeight,top=layer===count-1?bounds.max[2]:Math.min(bounds.max[2],bottom+layerHeight),height=top-bottom,contours=closedLoops(section(body,(bottom+top)/2)),depths=contours.map((p,i)=>contours.reduce((n,q,j)=>n+(i!==j&&Math.abs(area2(q))>Math.abs(area2(p))&&pointInPolygon(p[0],q)?1:0),0)),paths=[];
     const add=(points,closed,kind)=>{if(points.length<2)return;let length=0;for(let i=0;i<points.length-(closed?0:1);i++)length+=Math.hypot(points[(i+1)%points.length][0]-points[i][0],points[(i+1)%points.length][1]-points[i][1]);totalLength+=length;extrusionVolume+=length*height*lineWidth;totalSegments+=points.length;if(totalSegments>2000000)throw new RangeError('Additive path budget exceeded');paths.push({points,closed,kind,length});};
     for(let shell=shells-1;shell>=0;shell--)contours.forEach((p,i)=>{const offset=offsetPolygon(p,(depths[i]%2?1:-1)*(shell+.5)*lineWidth);if(depths[i]%2)offset.reverse();add(offset,true,'perimeter');});
     const density=layer<solidLayers||layer>=count-solidLayers?1:infill;
