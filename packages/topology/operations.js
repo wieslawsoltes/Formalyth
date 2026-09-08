@@ -79,3 +79,7 @@ export function splitConvex(body,{normal=[0,0,1],origin=[0,0,0],tolerance=1e-6}=
   if(!negative.changed||!positive.changed||!negative.polygons.length||!positive.polygons.length)fail('NO_SPLIT','Plane must cross the solid interior, not merely touch it');
   return {negative:triangulated(negative.polygons,tolerance,{kind:'split',side:'negative',faceted:true}),positive:triangulated(positive.polygons,tolerance,{kind:'split',side:'positive',faceted:true})};
 }
+
+// Shared low-level routines. Callers supply outward unit normals and a validated
+// closed convex input; public editing functions perform validation before use.
+export {cut as clipPolygons, triangulated as triangulateConvexPolygons};
